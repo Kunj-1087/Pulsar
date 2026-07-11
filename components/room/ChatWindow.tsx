@@ -154,12 +154,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         await signaling.connect();
         await signaling.joinRoom(roomId);
         store.appendIceLog('[Signaling] Connected to signaling channel.');
-        
-        // Announce presence to other peers in the room
-        signaling.send({
-          type: 'peer-joined',
-          peerId: myPeerId,
-        });
       } catch (err) {
         console.error('Signaling connection failure:', err);
         store.appendIceLog('[Signaling Error] Failed to connect signaling server.');

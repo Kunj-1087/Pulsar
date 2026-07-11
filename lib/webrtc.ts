@@ -149,7 +149,12 @@ export class PulsarPeer {
    * Handles incoming SDP Offer and returns Answer description.
    */
   async handleOffer(sdp: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
+    console.log(`[Pulsar WebRTC] Handling incoming offer from peer ${this.peerId}. State: ${this.peerConnection.signalingState}`);
     this.onIceLog(`[SDP] Handling incoming offer...`);
+    if (this.peerConnection.signalingState !== 'stable' && this.peerConnection.signalingState !== 'have-local-offer') {
+      console.warn(`[Pulsar WebRTC] Ignoring offer because signaling state is: ${this.peerConnection.signalingState}`);
+      return this.peerConnection.localDescription || { type: 'answer', sdp: '' };
+    }
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
     this.onIceLog(`[SDP] Remote description set (offer)`);
     
@@ -166,7 +171,13 @@ export class PulsarPeer {
    * Handles incoming SDP Answer.
    */
   async handleAnswer(sdp: RTCSessionDescriptionInit): Promise<void> {
+    console.log(`[Pulsar WebRTC] Handling incoming answer from peer ${this.peerId}. State: ${this.peerConnection.signalingState}`);
     this.onIceLog(`[SDP] Handling incoming answer...`);
+    if (this.peerConnection.signalingState !== 'have-local-offer') {
+      console.warn(`[Pulsar WebRTC] Ignoring answer because signaling state is not 'have-local-offer'. State: ${this.peerConnection.signalingState}`);
+      this.onIceLog(`[SDP Warning] Answer ignored (state: ${this.peerConnection.signalingState})`);
+      return;
+    }
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
     this.onIceLog(`[SDP] Remote description set (answer)`);
     
