@@ -22,6 +22,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 }) => {
   const [text, setText] = useState('');
   const [fileError, setFileError] = useState<string | null>(null);
+  const [isFocused, setIsFocused] = useState(false);
+  const [isFlashing, setIsFlashing] = useState(false);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -69,6 +71,10 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       onSendMessage(trimmed);
       setText('');
       
+      // Trigger temporary opacity flash
+      setIsFlashing(true);
+      setTimeout(() => setIsFlashing(false), 100);
+
       // Cancel typing immediately upon sending
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -166,10 +172,21 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             value={text}
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
             placeholder={disabled ? "Waiting for peers to join..." : "Write a message..."}
             disabled={disabled}
-            className="w-full bg-[#1a1a1a] border border-border-default text-text-primary placeholder:text-text-muted font-sans text-[15px] rounded px-3 py-2 resize-none max-h-[120px] focus:outline-none focus:border-text-primary/60 focus:ring-1 focus:ring-text-primary/40 disabled:opacity-50 disabled:cursor-not-allowed leading-normal"
+            className={cn(
+              "w-full bg-[#1a1a1a] border border-border-default text-text-primary placeholder:text-text-muted font-sans text-[15px] rounded px-3 py-2 resize-none max-h-[120px] focus:outline-none focus:border-text-primary/60 focus:ring-1 focus:ring-text-primary/40 disabled:opacity-50 disabled:cursor-not-allowed leading-normal transition-opacity duration-100",
+              isFlashing && "opacity-60"
+            )}
             style={{ height: '40px' }}
+          />
+          <span
+            className={cn(
+              "absolute bottom-0 left-0 w-full h-[1px] bg-[#ced0ce]/60 origin-center transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none",
+              isFocused ? "scale-x-100" : "scale-x-0"
+            )}
           />
           {showCounter && (
             <span className="absolute bottom-2.5 right-3.5 text-[10px] font-mono text-status-yellow select-none bg-black/60 px-1 rounded">
@@ -182,11 +199,19 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         <Button
           onClick={handleSend}
           disabled={disabled || !text.trim()}
-          className="w-10 h-10 p-0 rounded-full shrink-0"
+          className={cn(
+            "w-10 h-10 p-0 rounded-full shrink-0 transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] border border-transparent",
+            text.trim()
+              ? "bg-[#e6e8e6] text-[#191919] hover:bg-[#e6e8e6]/90"
+              : "bg-bg-surface text-text-muted border-border-default cursor-not-allowed"
+          )}
           title="Send message"
           aria-label="Send message"
         >
-          <Send className="w-4 h-4" />
+          <Send
+            className="w-4 h-4 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]"
+            style={text.trim() ? { transform: 'rotate(15deg)' } : undefined}
+          />
         </Button>
       </div>
     </div>

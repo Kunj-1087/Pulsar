@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { File, Download, Image as ImageIcon, AlertTriangle, Eye } from 'lucide-react';
 import { FileRef } from '../../types';
-import { formatBytes } from '../../lib/utils';
+import { formatBytes, cn } from '../../lib/utils';
 import { Button } from '../ui/Button';
 
 interface FileTransferProps {
@@ -15,6 +15,25 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
   const { name, size, mimeType, blob, progress = 0, status } = fileRef;
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [showLightbox, setShowLightbox] = useState(false);
+
+  const [localStatus, setLocalStatus] = useState(status);
+  const [localProgress, setLocalProgress] = useState(progress);
+  const [hasCompleted, setHasCompleted] = useState(false);
+
+  useEffect(() => {
+    if (status === 'complete') {
+      setLocalProgress(100);
+      setHasCompleted(true);
+      const timer = setTimeout(() => {
+        setLocalStatus('complete');
+      }, 200); // 200ms delay for completion visual flash
+      return () => clearTimeout(timer);
+    } else {
+      setLocalStatus(status);
+      setLocalProgress(progress);
+      setHasCompleted(false);
+    }
+  }, [status, progress]);
 
   // Setup preview URL for images when blob becomes available
   useEffect(() => {
@@ -61,7 +80,7 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
       </div>
 
       {/* Progress & Actions */}
-      {status === 'complete' && blob && (
+      {localStatus === 'complete' && blob && (
         <div className="space-y-2 mt-2">
           {isImage && imageUrl && (
             <div className="relative group cursor-zoom-in rounded overflow-hidden border border-border-default/30 max-h-[160px] bg-black/40">
@@ -86,7 +105,7 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
             variant="ghost"
             size="sm"
             onClick={handleDownload}
-            className="w-full h-8 flex items-center justify-center gap-1.5"
+            className="w-full h-8 flex items-center justify-center gap-1.5 pulsar-download-in"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Download</span>
@@ -95,16 +114,24 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
       )}
 
       {/* Sending/Receiving Progress Bar */}
-      {(status === 'sending' || status === 'receiving') && (
+      {(localStatus === 'sending' || localStatus === 'receiving') && (
         <div className="space-y-1.5 mt-2">
           <div className="flex justify-between text-[9px] text-text-muted">
-            <span className="capitalize">{status}...</span>
-            <span>{progress}%</span>
+            <span className="capitalize">{localStatus}...</span>
+            <span>{localProgress}%</span>
           </div>
           <div className="w-full h-1 bg-border-default rounded-full overflow-hidden">
             <div
-              className="h-full bg-text-primary transition-all duration-150"
-              style={{ width: `${progress}%` }}
+              className={cn(
+                "h-full transition-all",
+                hasCompleted ? "bg-[#e6e8e6]" : "bg-text-primary"
+              )}
+              style={{
+                width: `${localProgress}%`,
+                transitionProperty: 'width, background-color',
+                transitionDuration: hasCompleted ? '200ms' : '80ms',
+                transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+              }}
             />
           </div>
         </div>

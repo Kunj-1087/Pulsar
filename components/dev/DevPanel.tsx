@@ -1,14 +1,62 @@
 'use client';
 
-import React, { useState } from 'react';
-import { X, ShieldAlert, Terminal, RefreshCw, FileText } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, ShieldAlert, Terminal, RefreshCw, FileText, ChevronRight } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
-import { formatBytes } from '../../lib/utils';
+import { formatBytes, cn } from '../../lib/utils';
 import { Button } from '../ui/Button';
 
 interface DevPanelProps {
   onRefreshStats: () => void;
 }
+
+// RequestAnimationFrame Count-up Interpolator
+const AnimatedCounter: React.FC<{
+  value: number;
+  duration: number;
+  format: (val: number) => string;
+  unit?: string;
+}> = ({ value, duration, format, unit = 'B' }) => {
+  const [displayVal, setDisplayVal] = useState(value);
+  const [isAnimating, setIsAnimating] = useState(false);
+  const prevValueRef = useRef(value);
+
+  useEffect(() => {
+    const start = prevValueRef.current;
+    const end = value;
+    if (start === end) {
+      setDisplayVal(end);
+      return;
+    }
+
+    setIsAnimating(true);
+    let startTime: number | null = null;
+
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+      const current = Math.round(start + (end - start) * easedProgress);
+
+      setDisplayVal(current);
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      } else {
+        setIsAnimating(false);
+        prevValueRef.current = end;
+      }
+    };
+
+    requestAnimationFrame(animate);
+  }, [value, duration]);
+
+  return (
+    <span>
+      {isAnimating ? `${displayVal.toLocaleString()}${unit ? ' ' + unit : ''}` : format(value)}
+    </span>
+  );
+};
 
 export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
   const {
@@ -26,10 +74,82 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
   const [sdpModalType, setSdpModalType] = useState<'local' | 'remote' | null>(null);
   const [copiedSdp, setCopiedSdp] = useState(false);
 
-  if (!devModeEnabled) return null;
+  // Connection value flash states
+  const [iceStateHighlight, setIceStateHighlight] = useState(false);
+  const [channelStateHighlight, setChannelStateHighlight] = useState(false);
+
+  // Ping states
+  const [isPingActive, setIsPingActive] = useState(false);
+  const [pingOpacityFlash, setPingOpacityFlash] = useState(false);
+  
+  // Stagger delays map for new iceLog entries
+  const [logAnimationDelays, setLogAnimationDelays] = useState<number[]>([]);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  
+  const prevIceState = useRef(peers.values().next().value?.connectionState);
+  const prevChannelState = useRef(connectionStats?.channelState);
+  const prevLatency = useRef(connectionStats?.latencyMs);
+
+  const activePeer = Array.from(peers.values())[0];
+
+  // Track value updates to trigger flash highlights
+  useEffect(() => {
+    const currentState = activePeer?.connectionState;
+    if (currentState !== prevIceState.current) {
+      setIceStateHighlight(true);
+      const timer = setTimeout(() => setIceStateHighlight(false), 400);
+      prevIceState.current = currentState;
+      return () => clearTimeout(timer);
+    }
+  }, [activePeer?.connectionState]);
+
+  useEffect(() => {
+    const currentChannel = connectionStats?.channelState;
+    if (currentChannel !== prevChannelState.current) {
+      setChannelStateHighlight(true);
+      const timer = setTimeout(() => setChannelStateHighlight(false), 400);
+      prevChannelState.current = currentChannel;
+      return () => clearTimeout(timer);
+    }
+  }, [connectionStats?.channelState]);
+
+  // Track latency update to clear active ping button state
+  useEffect(() => {
+    if (connectionStats?.latencyMs !== prevLatency.current) {
+      setIsPingActive(false);
+      prevLatency.current = connectionStats?.latencyMs;
+    }
+  }, [connectionStats?.latencyMs]);
+
+  // Stagger cascading arrival of log lines
+  useEffect(() => {
+    setLogAnimationDelays((prev) => {
+      const nextDelays = [...prev];
+      for (let i = nextDelays.length; i < iceLog.length; i++) {
+        const batchIndex = i - prev.length;
+        nextDelays.push(batchIndex * 40); // 40ms stagger per entry in the same batch
+      }
+      return nextDelays;
+    });
+
+    // Auto-scroll logs smoothly
+    if (logContainerRef.current) {
+      logContainerRef.current.scrollTo({
+        top: logContainerRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+    }
+  }, [iceLog.length]);
 
   const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
+  };
+
+  const handlePingClick = () => {
+    setIsPingActive(true);
+    setPingOpacityFlash(true);
+    setTimeout(() => setPingOpacityFlash(false), 100); // 100ms click flash feedback
+    onRefreshStats();
   };
 
   const handleCopySdp = async (sdpText: string) => {
@@ -42,11 +162,16 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
     }
   };
 
-  const activePeer = Array.from(peers.values())[0];
-
   return (
     <>
-      <div className="w-[360px] h-full border-l border-border-default bg-[#111111] flex flex-col font-mono text-xs select-none text-text-primary z-40">
+      <div
+        className={cn(
+          "fixed top-0 right-0 h-full w-[360px] border-l border-border-default bg-[#111111] flex flex-col font-mono text-xs select-none text-text-primary z-40 transition-all",
+          devModeEnabled
+            ? "translate-x-0 opacity-100 duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]"
+            : "translate-x-full opacity-0 pointer-events-none duration-180 ease-[cubic-bezier(0.4,0,1,1)]"
+        )}
+      >
         {/* Header */}
         <div className="h-[52px] px-4 border-b border-border-default flex items-center justify-between bg-bg-primary">
           <div className="flex items-center gap-2 text-text-bright">
@@ -72,19 +197,46 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
               className="w-full px-3 py-2 flex items-center justify-between bg-[#171717] font-semibold text-text-bright hover:bg-bg-surface text-left"
             >
               <span>1. CONNECTION STATE</span>
-              <span>{expandedSection === 'connection' ? '[-]' : '[+]'}</span>
+              <span className="flex items-center gap-0.5">
+                <span className="text-text-muted">[</span>
+                <ChevronRight
+                  className={cn(
+                    "w-3 h-3 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    expandedSection === 'connection' && "rotate-90"
+                  )}
+                />
+                <span className="text-text-muted">]</span>
+              </span>
             </button>
-            {expandedSection === 'connection' && (
-              <div className="p-3 space-y-2 bg-[#121212]/50 border-t border-border-default">
+            <div
+              className={cn(
+                "transition-all overflow-hidden border-t",
+                expandedSection === 'connection'
+                  ? "max-h-[400px] opacity-100 border-border-default duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
+              )}
+            >
+              <div className="p-3 space-y-2 bg-[#121212]/50">
                 <div className="flex justify-between">
                   <span className="text-text-muted">Active Peer ID:</span>
                   <span className="text-text-bright truncate max-w-[180px]">{activePeer?.peerId || 'None'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-text-muted">ICE Conn State:</span>
-                  <span className={`font-bold ${
-                    activePeer?.connectionState === 'connected' ? 'text-status-green' : 'text-status-yellow'
-                  }`}>{activePeer?.connectionState?.toUpperCase() || 'IDLE'}</span>
+                  <span
+                    className={cn(
+                      "font-bold transition-colors",
+                      iceStateHighlight ? "text-text-bright duration-100" : "duration-300",
+                      !iceStateHighlight && {
+                        "text-status-green": activePeer?.connectionState === 'connected',
+                        "text-status-yellow": activePeer?.connectionState === 'connecting' || activePeer?.connectionState === 'new',
+                        "text-amber-600": !activePeer?.connectionState || activePeer?.connectionState === 'idle',
+                        "text-status-red": ['failed', 'disconnected', 'closed'].includes(activePeer?.connectionState || ''),
+                      }
+                    )}
+                  >
+                    {activePeer?.connectionState?.toUpperCase() || 'IDLE'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-text-muted">Candidate Type:</span>
@@ -92,12 +244,20 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-text-muted">Data Channel:</span>
-                  <span className={`font-bold ${
-                    connectionStats?.channelState === 'open' ? 'text-status-green' : 'text-status-red'
-                  }`}>{connectionStats?.channelState?.toUpperCase() || 'CLOSED'}</span>
+                  <span
+                    className={cn(
+                      "font-bold transition-colors",
+                      channelStateHighlight ? "text-text-bright duration-100" : "duration-300",
+                      !channelStateHighlight && (
+                        connectionStats?.channelState === 'open' ? 'text-status-green' : 'text-status-red'
+                      )
+                    )}
+                  >
+                    {connectionStats?.channelState?.toUpperCase() || 'CLOSED'}
+                  </span>
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Section 2: Realtime Stats */}
@@ -107,41 +267,84 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
               className="w-full px-3 py-2 flex items-center justify-between bg-[#171717] font-semibold text-text-bright hover:bg-bg-surface text-left"
             >
               <span>2. NETWORK METRICS</span>
-              <span>{expandedSection === 'stats' ? '[-]' : '[+]'}</span>
+              <span className="flex items-center gap-0.5">
+                <span className="text-text-muted">[</span>
+                <ChevronRight
+                  className={cn(
+                    "w-3 h-3 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    expandedSection === 'stats' && "rotate-90"
+                  )}
+                />
+                <span className="text-text-muted">]</span>
+              </span>
             </button>
-            {expandedSection === 'stats' && (
-              <div className="p-3 space-y-2.5 bg-[#121212]/50 border-t border-border-default">
+            <div
+              className={cn(
+                "transition-all overflow-hidden border-t",
+                expandedSection === 'stats'
+                  ? "max-h-[400px] opacity-100 border-border-default duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
+              )}
+            >
+              <div className="p-3 space-y-2.5 bg-[#121212]/50">
                 <div className="flex justify-between">
                   <span className="text-text-muted">Bytes Sent:</span>
-                  <span className="text-text-bright">{formatBytes(connectionStats?.bytesSent || 0)}</span>
+                  <span className="text-text-bright">
+                    <AnimatedCounter
+                      value={connectionStats?.bytesSent || 0}
+                      duration={300}
+                      format={formatBytes}
+                      unit="B"
+                    />
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-text-muted">Bytes Received:</span>
-                  <span className="text-text-bright">{formatBytes(connectionStats?.bytesReceived || 0)}</span>
+                  <span className="text-text-bright">
+                    <AnimatedCounter
+                      value={connectionStats?.bytesReceived || 0}
+                      duration={300}
+                      format={formatBytes}
+                      unit="B"
+                    />
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-text-muted">Messages Count:</span>
-                  <span className="text-text-bright">{connectionStats?.messageCount || 0}</span>
+                  <span className="text-text-bright">
+                    <AnimatedCounter
+                      value={connectionStats?.messageCount || 0}
+                      duration={300}
+                      format={(val) => val.toString()}
+                      unit=""
+                    />
+                  </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-text-muted">Latency RTT:</span>
-                  <span className="text-text-bright">
-                    {connectionStats?.latencyMs !== null && connectionStats?.latencyMs !== undefined
-                      ? `${connectionStats.latencyMs} ms`
-                      : 'N/A'}
+                  <span className={cn("text-text-bright", connectionStats?.latencyMs !== null && "pulsar-latency-fade-in")}>
+                    <AnimatedCounter
+                      value={connectionStats?.latencyMs || 0}
+                      duration={400}
+                      format={(val) => val > 0 ? `${val} ms` : 'N/A'}
+                      unit="ms"
+                    />
                   </span>
                 </div>
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={onRefreshStats}
-                  className="w-full h-8 flex items-center justify-center gap-1.5 mt-1"
+                  onClick={handlePingClick}
+                  className={cn(
+                    "w-full h-8 flex items-center justify-center gap-1.5 mt-1 transition-opacity duration-100",
+                    pingOpacityFlash && "opacity-60"
+                  )}
                 >
-                  <RefreshCw className="w-3 h-3 animate-pulse" />
-                  <span>Query Stats / Ping</span>
+                  <RefreshCw className={cn("w-3 h-3", isPingActive ? "animate-spin" : "animate-pulse")} />
+                  <span>{isPingActive ? '...' : 'Query Stats / Ping'}</span>
                 </Button>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Section 3: ICE gathering log */}
@@ -151,10 +354,26 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
               className="w-full px-3 py-2 flex items-center justify-between bg-[#171717] font-semibold text-text-bright hover:bg-bg-surface text-left"
             >
               <span>3. GATHERING LOGS</span>
-              <span>{expandedSection === 'ice' ? '[-]' : '[+]'}</span>
+              <span className="flex items-center gap-0.5">
+                <span className="text-text-muted">[</span>
+                <ChevronRight
+                  className={cn(
+                    "w-3 h-3 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    expandedSection === 'ice' && "rotate-90"
+                  )}
+                />
+                <span className="text-text-muted">]</span>
+              </span>
             </button>
-            {expandedSection === 'ice' && (
-              <div className="p-3 space-y-2 bg-[#121212]/50 border-t border-border-default">
+            <div
+              className={cn(
+                "transition-all overflow-hidden border-t",
+                expandedSection === 'ice'
+                  ? "max-h-[400px] opacity-100 border-border-default duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
+              )}
+            >
+              <div className="p-3 space-y-2 bg-[#121212]/50">
                 <div className="flex justify-between items-center mb-1">
                   <span className="text-[10px] text-text-muted uppercase">ICE Log Stream</span>
                   <button
@@ -164,19 +383,29 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
                     CLEAR
                   </button>
                 </div>
-                <div className="w-full h-40 overflow-y-auto bg-black p-2 border border-border-default/40 rounded text-[10px] text-text-primary leading-normal select-text space-y-1">
+                <div
+                  ref={logContainerRef}
+                  className="w-full h-40 overflow-y-auto bg-black p-2 border border-border-default/40 rounded text-[10px] text-text-primary leading-normal select-text space-y-1"
+                >
                   {iceLog.length === 0 ? (
                     <span className="text-text-muted">Waiting for events...</span>
                   ) : (
-                    iceLog.map((log, index) => (
-                      <div key={index} className="border-b border-border-default/20 pb-0.5 last:border-0">
-                        {log}
-                      </div>
-                    ))
+                    iceLog.map((log, index) => {
+                      const delay = logAnimationDelays[index] || 0;
+                      return (
+                        <div
+                          key={index}
+                          className="pulsar-log-entry border-b border-border-default/20 pb-0.5 last:border-0 opacity-0"
+                          style={{ animationDelay: `${delay}ms` }}
+                        >
+                          {log}
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Section 4: SDP Viewer */}
@@ -186,10 +415,26 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
               className="w-full px-3 py-2 flex items-center justify-between bg-[#171717] font-semibold text-text-bright hover:bg-bg-surface text-left"
             >
               <span>4. SDP SESSION DESCRIPTIONS</span>
-              <span>{expandedSection === 'sdp' ? '[-]' : '[+]'}</span>
+              <span className="flex items-center gap-0.5">
+                <span className="text-text-muted">[</span>
+                <ChevronRight
+                  className={cn(
+                    "w-3 h-3 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    expandedSection === 'sdp' && "rotate-90"
+                  )}
+                />
+                <span className="text-text-muted">]</span>
+              </span>
             </button>
-            {expandedSection === 'sdp' && (
-              <div className="p-3 space-y-2 bg-[#121212]/50 border-t border-border-default">
+            <div
+              className={cn(
+                "transition-all overflow-hidden border-t",
+                expandedSection === 'sdp'
+                  ? "max-h-[400px] opacity-100 border-border-default duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
+              )}
+            >
+              <div className="p-3 space-y-2 bg-[#121212]/50">
                 <p className="text-[10px] text-text-muted mb-2 leading-relaxed">
                   Inspect raw Session Description Protocol (SDP) configurations negotiated during handshake.
                 </p>
@@ -214,7 +459,7 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
                   </Button>
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -228,7 +473,7 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
       {/* SDP Viewer Modal Overlay */}
       {sdpModalType && (
         <div className="fixed inset-0 z-50 bg-[#121212]/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-[500px] h-[460px] bg-bg-surface border border-border-default rounded-md p-6 flex flex-col relative select-text">
+          <div className="w-full max-w-[500px] h-[460px] bg-bg-surface border border-border-default rounded-md p-6 flex flex-col relative select-text pulsar-sdp-modal-in">
             <button
               onClick={() => setSdpModalType(null)}
               className="absolute top-4 right-4 text-text-muted hover:text-text-bright transition-colors focus:outline-none"
@@ -241,11 +486,11 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
               <span>{sdpModalType === 'local' ? 'Local' : 'Remote'} Session SDP</span>
             </h3>
 
-            <textarea
-              readOnly
-              value={(sdpModalType === 'local' ? localSdp : remoteSdp) || ''}
-              className="flex-1 w-full bg-black border border-border-default p-3 rounded font-mono text-[10px] text-text-primary leading-normal focus:outline-none resize-none select-all"
-            />
+            <div className="flex-1 w-full bg-black border border-border-default p-3 rounded font-mono text-[10px] text-text-primary leading-normal overflow-auto select-all relative">
+              <pre className="whitespace-pre-wrap sdp-text-container select-text">
+                {(sdpModalType === 'local' ? localSdp : remoteSdp) || ''}
+              </pre>
+            </div>
 
             <div className="mt-4 flex gap-2 justify-end select-none">
               <Button

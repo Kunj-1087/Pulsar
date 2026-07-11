@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { generateId } from '../../lib/utils';
+import { generateId, cn } from '../../lib/utils';
 import { useChatStore } from '../../store/chatStore';
 import { PulsarSignaling } from '../../lib/signaling';
 import { PulsarRoom } from '../../lib/webrtc';
@@ -626,19 +626,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   return (
     <div className="flex w-screen h-screen overflow-hidden bg-bg-primary">
       {/* Main chat interface */}
-      <div className="flex-1 flex flex-col min-w-0 h-full relative">
+      <div
+        className={cn(
+          "flex-1 flex flex-col min-w-0 h-full relative transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]",
+          store.devModeEnabled && "md:pr-[360px]"
+        )}
+      >
         <RoomHeader roomId={roomId} />
         <PeerStatus />
         
         <MessageList messages={store.messages} />
-
-        {/* Typing Indicator HUD bar */}
-        {typingPeerNames.length > 0 && (
-          <div className="px-4 py-1.5 bg-bg-primary text-[10px] font-mono text-status-yellow select-none flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-status-yellow animate-pulse" />
-            <span>{typingPeerNames.join(', ')} {typingPeerNames.length > 1 ? 'are' : 'is'} typing...</span>
-          </div>
-        )}
 
         <MessageInput
           onSendMessage={handleSendMessage}
@@ -649,9 +646,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       </div>
 
       {/* Developer Dashboard slide-out */}
-      {store.devModeEnabled && (
-        <DevPanel onRefreshStats={handleManualRefreshStats} />
-      )}
+      <DevPanel onRefreshStats={handleManualRefreshStats} />
 
       {/* Stacked toast notifications */}
       <div
