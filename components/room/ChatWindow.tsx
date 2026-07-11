@@ -72,10 +72,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     let active = true;
 
     async function init() {
-      // 1. Resolve Display Name
+      // 1. Resolve Display Name and Identity
       let myName = '';
       if (typeof window !== 'undefined') {
-        myName = localStorage.getItem('pulsar-displayName') || '';
+        const saved = localStorage.getItem('pulsar_identity');
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            myName = parsed.handle || '';
+          } catch {}
+        }
       }
       if (!myName.trim()) {
         myName = `Peer_${Math.random().toString(36).substring(2, 6)}`;
@@ -138,15 +144,28 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             }
 
             if (oldPeer?.connectionState !== 'connected') {
-              const name = oldPeer?.displayName || peerId.substring(0, 8);
+              const name = oldPeer?.handle ? `@${oldPeer.handle}` : (oldPeer?.displayName || peerId.substring(0, 8));
               addToast(`Peer joined the room: ${name}`);
 
               // Send our peer info immediately
               if (displayName) {
+                let myHandle = '';
+                let myColor = '';
+                try {
+                  const saved = localStorage.getItem('pulsar_identity');
+                  if (saved) {
+                    const parsed = JSON.parse(saved);
+                    myHandle = parsed.handle;
+                    myColor = parsed.peerColor;
+                  }
+                } catch {}
+
                 roomRef.current?.sendToPeer(peerId, {
                   type: 'peer-info',
                   peerId: myPeerId,
                   displayName,
+                  handle: myHandle,
+                  peerColor: myColor,
                 });
               }
             }
@@ -159,14 +178,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
                   store.removePeer(peerId);
                   roomRef.current?.removePeer(peerId);
 
-                  const name = currentPeer.displayName || peerId.substring(0, 8);
+                  const name = currentPeer.handle ? `@${currentPeer.handle}` : (currentPeer.displayName || peerId.substring(0, 8));
                   addToast(`Peer left the room: ${name}`);
 
                   store.addMessage({
                     id: generateId(),
                     roomId,
                     type: 'system',
-                    text: `Peer left the room.`,
+                    text: `${name} left the room.`,
                     sender: 'System',
                     senderId: 'system',
                     ts: Date.now(),
@@ -392,12 +411,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const handleIncomingDataMessage = async (peerId: string, msg: DataChannelMessage) => {
     switch (msg.type) {
       case 'peer-info':
-        store.updatePeer(peerId, { displayName: msg.displayName });
+        store.updatePeer(peerId, {
+          displayName: msg.displayName,
+          handle: msg.handle,
+          peerColor: msg.peerColor,
+        });
+        
+        const peerName = msg.handle ? `@${msg.handle}` : msg.displayName;
         store.addMessage({
           id: generateId(),
           roomId,
           type: 'system',
-          text: `${msg.displayName} is now connected.`,
+          text: `${peerName} joined the room.`,
           sender: 'System',
           senderId: 'system',
           ts: Date.now(),
@@ -596,10 +621,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   // When connection opens, broadcast displayName info
   useEffect(() => {
     if (store.isConnected && displayName) {
+      let myHandle = '';
+      let myColor = '';
+      try {
+        const saved = localStorage.getItem('pulsar_identity');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          myHandle = parsed.handle;
+          myColor = parsed.peerColor;
+        }
+      } catch {}
+
       const infoMsg: DataChannelMessage = {
         type: 'peer-info',
         peerId: myPeerId,
         displayName,
+        handle: myHandle,
+        peerColor: myColor,
       };
       roomRef.current?.broadcast(infoMsg);
     }

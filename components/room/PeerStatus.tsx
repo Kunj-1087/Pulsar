@@ -24,16 +24,26 @@ export const PeerStatus: React.FC = () => {
     );
   }
 
-  const connectedNames = connectedPeers
-    .map((p) => p.displayName || p.peerId.substring(0, 8))
-    .join(', ');
-
   return (
     <div className="h-8 bg-[#1a1a1a] border-b border-border-default px-4 flex items-center justify-between overflow-x-auto whitespace-nowrap text-xs font-mono text-text-muted scrollbar-none select-none">
       <div className="flex items-center gap-4">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-3">
           <span className="w-1.5 h-1.5 rounded-full bg-status-green animate-pulse" />
-          <span className="text-text-bright">{connectedNames}</span>
+          <div className="flex items-center gap-3">
+            {connectedPeers.map((p) => {
+              const handle = p.handle || p.displayName || p.peerId.substring(0, 8);
+              const color = p.peerColor || '#7a7a7a';
+              return (
+                <div key={p.peerId} className="flex items-center gap-1.5">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                  <span className="text-text-bright">@{handle}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
       

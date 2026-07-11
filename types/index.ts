@@ -25,6 +25,8 @@ export interface FileRef {
 export interface Peer {
   peerId: string;
   displayName?: string;
+  handle?: string;
+  peerColor?: string;
   connectionState: RTCPeerConnectionState;
   isHost: boolean;
 }
@@ -43,7 +45,7 @@ export type DataChannelMessage =
   | { type: 'file-chunk'; id: string; chunk: string; index: number } // base64 encoded chunk
   | { type: 'file-complete'; id: string }
   | { type: 'typing'; senderId: string; displayName: string; isTyping: boolean }
-  | { type: 'peer-info'; peerId: string; displayName: string };
+  | { type: 'peer-info'; peerId: string; displayName: string; handle?: string; peerColor?: string };
 
 // Signaling protocol (compatible with Ably)
 export type SignalingMessage =

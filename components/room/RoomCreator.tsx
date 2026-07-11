@@ -10,7 +10,7 @@ export const RoomCreator: React.FC = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   
-  const [displayName, setDisplayName] = useState('');
+  const [identity, setIdentity] = useState<{ handle: string; peerColor: string } | null>(null);
   const [roomCode, setRoomCode] = useState('');
   
   const [isCreating, setIsCreating] = useState(false);
@@ -19,12 +19,16 @@ export const RoomCreator: React.FC = () => {
   const [createError, setCreateError] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
 
-  // Load username from localStorage on mount if available
+  // Load identity and room code from localStorage / URL
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedName = localStorage.getItem('pulsar-displayName');
-      if (savedName) {
-        setDisplayName(savedName);
+      const saved = localStorage.getItem('pulsar_identity');
+      if (saved) {
+        try {
+          setIdentity(JSON.parse(saved));
+        } catch (e) {
+          console.error(e);
+        }
       }
       
       // Auto-populate room code if present in URL
@@ -35,20 +39,10 @@ export const RoomCreator: React.FC = () => {
     }
   }, [searchParams]);
 
-  const saveDisplayName = () => {
-    const trimmed = displayName.trim();
-    if (trimmed) {
-      localStorage.setItem('pulsar-displayName', trimmed);
-    } else {
-      localStorage.removeItem('pulsar-displayName');
-    }
-  };
-
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCreating(true);
     setCreateError(null);
-    saveDisplayName();
 
     try {
       const res = await fetch('/api/signal/create', {
@@ -80,7 +74,6 @@ export const RoomCreator: React.FC = () => {
     e.preventDefault();
     setIsJoining(true);
     setJoinError(null);
-    saveDisplayName();
 
     const cleanCode = roomCode.trim().toUpperCase();
 
@@ -106,18 +99,23 @@ export const RoomCreator: React.FC = () => {
       </div>
 
       <div className="space-y-8">
-        {/* Name Config */}
-        <div>
-          <label className="block text-xs font-mono uppercase text-text-muted mb-2">
-            Display Name
-          </label>
-          <Input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="User (random fallback)"
-            maxLength={18}
-          />
-        </div>
+        {/* Node Identity Display */}
+        {identity && (
+          <div className="flex flex-col gap-1.5 p-3.5 bg-bg-primary border border-border-default rounded">
+            <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider select-none">
+              Active Node Identity
+            </span>
+            <div className="flex items-center gap-2 select-none">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: identity.peerColor }}
+              />
+              <span className="font-mono text-sm text-[#ced0ce]">
+                @{identity.handle}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Section divider line */}
         <div className="h-[1px] bg-border-default" />

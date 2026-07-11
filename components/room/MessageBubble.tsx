@@ -2,6 +2,7 @@ import React from 'react';
 import { Message } from '../../types';
 import { formatTime, cn } from '../../lib/utils';
 import { FileTransfer } from './FileTransfer';
+import { useChatStore } from '../../store/chatStore';
 
 interface MessageBubbleProps {
   message: Message;
@@ -16,7 +17,31 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   isGroupHovered = false,
   shouldAnimate = false,
 }) => {
-  const { type, text, sender, ts, isOwn, fileRef } = message;
+  const { peers } = useChatStore();
+  const { type, text, sender, senderId, ts, isOwn, fileRef } = message;
+
+  // Resolve dynamic handle and peer color
+  let senderHandle = sender;
+  let senderColor = '#7a7a7a'; // fallback color
+
+  if (isOwn) {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('pulsar_identity');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          senderHandle = parsed.handle;
+          senderColor = parsed.peerColor;
+        } catch {}
+      }
+    }
+  } else {
+    const peer = peers.get(senderId);
+    if (peer) {
+      senderHandle = peer.handle || peer.displayName || sender;
+      senderColor = peer.peerColor || '#7a7a7a';
+    }
+  }
 
   // System message styling
   if (type === 'system') {
@@ -36,11 +61,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   return (
     <div className={cn("w-full flex flex-col mb-1", isOwn ? "items-end" : "items-start")}>
-      {/* Sender label (only show on received messages when the bubble sender shifts) */}
-      {!isOwn && showSender && (
-        <span className="text-[11px] font-mono text-text-muted ml-3 mb-1 select-none">
-          {sender}
-        </span>
+      {/* Sender label */}
+      {showSender && (
+        <div className={cn("flex items-center gap-1.5 mb-1 select-none", isOwn ? "justify-end mr-3" : "justify-start ml-3")}>
+          <span
+            className="w-2 h-2 rounded-full shrink-0 animate-[pulsar-message-in-system_250ms_ease-in_forwards]"
+            style={{ backgroundColor: senderColor }}
+          />
+          <span className="text-[11px] font-mono text-text-muted font-bold">
+            @{senderHandle}
+          </span>
+        </div>
       )}
 
       {/* Bubble wrapper */}

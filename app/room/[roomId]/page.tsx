@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { Metadata } from 'next';
 import { isValidRoomCode } from '../../../lib/roomCode';
 import { ChatWindow } from '../../../components/room/ChatWindow';
+import { IdentityGate } from '../../../components/room/IdentityGate';
 
 interface RoomPageProps {
   params: {
@@ -28,5 +29,9 @@ export default function RoomPage({ params }: RoomPageProps) {
     redirect('/');
   }
 
-  return <ChatWindow roomId={cleanRoomId} />;
+  return (
+    <IdentityGate>
+      <ChatWindow roomId={cleanRoomId} />
+    </IdentityGate>
+  );
 }

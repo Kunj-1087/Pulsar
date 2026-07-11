@@ -43,8 +43,8 @@ const MessageGroupComponent: React.FC<{
           animatedMessageIdsRef.current.add(msg.id);
         }
 
-        // Only show sender name on first message in group if not own
-        const showSenderName = !group.isOwn && idx === 0;
+        // Show sender name on first message in group for all users
+        const showSenderName = idx === 0;
 
         return (
           <MessageBubble
