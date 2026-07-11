@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Copy, Check, QrCode, Share2, Terminal, Users, X } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
