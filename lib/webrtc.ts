@@ -9,7 +9,7 @@ export class PulsarPeer {
   isInitiator: boolean;
   
   private candidateQueue: RTCIceCandidateInit[] = [];
-  private onSignal: (msg: SignalingMessage) => void;
+  private onIceCandidate: (candidate: RTCIceCandidateInit) => void;
   private onMessage: (msg: DataChannelMessage) => void;
   private onStateChange: (state: RTCPeerConnectionState) => void;
   private onIceLog: (log: string) => void;
@@ -22,7 +22,7 @@ export class PulsarPeer {
     peerId: string;
     myId: string;
     isInitiator: boolean;
-    onSignal: (msg: SignalingMessage) => void;
+    onIceCandidate: (candidate: RTCIceCandidateInit) => void;
     onMessage: (msg: DataChannelMessage) => void;
     onStateChange: (state: RTCPeerConnectionState) => void;
     onIceLog: (log: string) => void;
@@ -30,7 +30,7 @@ export class PulsarPeer {
     this.peerId = config.peerId;
     this.myId = config.myId;
     this.isInitiator = config.isInitiator;
-    this.onSignal = config.onSignal;
+    this.onIceCandidate = config.onIceCandidate;
     this.onMessage = config.onMessage;
     this.onStateChange = config.onStateChange;
     this.onIceLog = config.onIceLog;
@@ -42,34 +42,30 @@ export class PulsarPeer {
    * Initializes the RTCPeerConnection and setups handlers.
    */
   private initialize() {
-    const stunServer = process.env.NEXT_PUBLIC_STUN_SERVER || 'stun:stun.l.google.com:19302';
+    console.log(`[Pulsar WebRTC] Creating RTCPeerConnection for peer: ${this.peerId}`);
     
     this.peerConnection = new RTCPeerConnection({
       iceServers: [
-        { urls: stunServer },
+        { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
       ],
     });
 
-    this.onIceLog(`[Init] Peer connection created for ${this.peerId}. Stun: ${stunServer}`);
+    this.onIceLog(`[Init] Peer connection created for ${this.peerId}.`);
 
     // Gather ICE candidates
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
+        console.log(`[Pulsar WebRTC] Gathered local ICE candidate for peer ${this.peerId}:`, event.candidate.candidate);
         this.onIceLog(`[ICE] Local candidate gathered: ${event.candidate.candidate}`);
-        this.onSignal({
-          type: 'ice-candidate',
-          candidate: event.candidate.toJSON(),
-          fromPeer: this.myId,
-          toPeer: this.peerId,
-        });
+        this.onIceCandidate(event.candidate.toJSON());
       }
     };
 
     // Connection state changes
     this.peerConnection.onconnectionstatechange = () => {
       const state = this.peerConnection.connectionState;
+      console.log(`[Pulsar WebRTC] Connection state changed for peer ${this.peerId} to: ${state}`);
       this.onIceLog(`[State] Connection state changed to: ${state}`);
       this.onStateChange(state);
     };
@@ -80,6 +76,7 @@ export class PulsarPeer {
 
     // Data Channel Setup
     if (this.isInitiator) {
+      console.log(`[Pulsar WebRTC] Initiating data channel 'pulsar-data' for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Initiating data channel 'pulsar-data'`);
       this.dataChannel = this.peerConnection.createDataChannel('pulsar-data', {
         ordered: true,
@@ -87,6 +84,7 @@ export class PulsarPeer {
       this.setupDataChannelHandlers(this.dataChannel);
     } else {
       this.peerConnection.ondatachannel = (event) => {
+        console.log(`[Pulsar WebRTC] Received remote data channel '${event.channel.label}' from peer ${this.peerId}`);
         this.onIceLog(`[DataChannel] Received remote data channel: ${event.channel.label}`);
         this.dataChannel = event.channel;
         this.setupDataChannelHandlers(this.dataChannel);
@@ -99,18 +97,20 @@ export class PulsarPeer {
    */
   private setupDataChannelHandlers(channel: RTCDataChannel) {
     channel.onopen = () => {
+      console.log(`[Pulsar WebRTC] DataChannel '${channel.label}' is OPEN for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Data channel is OPEN`);
       // Update connection state
       this.onStateChange('connected');
     };
 
     channel.onclose = () => {
+      console.log(`[Pulsar WebRTC] DataChannel '${channel.label}' is CLOSED for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Data channel is CLOSED`);
       this.onStateChange('disconnected');
     };
 
     channel.onerror = (error) => {
-      console.error(`[DataChannel Error]`, error);
+      console.error(`[Pulsar WebRTC] DataChannel '${channel.label}' Error for peer ${this.peerId}:`, error);
       this.onIceLog(`[DataChannel Error] ${JSON.stringify(error)}`);
     };
 
@@ -334,7 +334,14 @@ export class PulsarRoom {
       peerId,
       myId: this.myId,
       isInitiator,
-      onSignal: this.onSignal,
+      onIceCandidate: (candidate) => {
+        this.onSignal({
+          type: 'ice-candidate',
+          candidate,
+          fromPeer: this.myId,
+          toPeer: peerId,
+        });
+      },
       onMessage: (msg) => this.onPeerMessage(peerId, msg),
       onStateChange: (state) => this.onPeerStateChange(peerId, state),
       onIceLog: (log) => this.onIceLog(`[Peer:${peerId}] ${log}`),

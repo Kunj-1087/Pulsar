@@ -24,6 +24,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const [displayName, setDisplayName] = useState('');
   const [myPeerId] = useState(() => generateId());
 
+  // Simple toast notification system
+  const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const showToast = (message: string) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToast({ message, visible: true });
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(prev => prev ? { ...prev, visible: false } : null);
+    }, 3000);
+  };
+
   // Refs for WebRTC instance mappings
   const signalingRef = useRef<PulsarSignaling | null>(null);
   const roomRef = useRef<PulsarRoom | null>(null);
@@ -102,15 +116,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           handleIncomingDataMessage(peerId, dataChanMsg);
         },
         onPeerStateChange: (peerId, state) => {
+          const oldPeer = store.peers.get(peerId);
           store.updatePeer(peerId, { connectionState: state });
           if (state === 'connected') {
             store.setIsConnected(true);
             store.setIsConnecting(false);
+            if (oldPeer?.connectionState !== 'connected') {
+              showToast('Peer connected and is now in the room');
+            }
           } else {
             // Check if any peer remains connected
             const list = Array.from(room.peers.values());
             const hasConnected = list.some(p => p.peerConnection.connectionState === 'connected');
             store.setIsConnected(hasConnected);
+            if ((state === 'disconnected' || state === 'failed') && oldPeer?.connectionState === 'connected') {
+              showToast('Peer left the room');
+            }
           }
         },
         onIceLog: (entry) => {
@@ -148,7 +169,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             id: generateId(),
             roomId,
             type: 'system',
-            text: 'Signaling failed. Check Ably API configuration.',
+            text: 'Signaling failed. Make sure the local signaling server (ws://localhost:8080) is running.',
             sender: 'System',
             senderId: 'system',
             ts: Date.now(),
@@ -178,6 +199,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     return () => {
       active = false;
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
       
       // Close WebRTC room & Ably connection
       roomRef.current?.close();
@@ -193,6 +215,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     if (!room) return;
 
     switch (msg.type) {
+      case 'room-joined':
+        store.appendIceLog(`[Signaling] Joined room. Existing peers: ${msg.existingPeers?.join(', ') || 'None'}`);
+        if (msg.existingPeers) {
+          for (const peerId of msg.existingPeers) {
+            store.addPeer({
+              peerId,
+              displayName: `Peer_${peerId.substring(0, 4)}`,
+              connectionState: 'connecting',
+              isHost: false,
+            });
+            // Add connection as non-initiator (joining client waits for offer)
+            await room.addPeer(peerId, false);
+          }
+        }
+        break;
+
       case 'peer-joined':
         store.appendIceLog(`[Signaling] Peer ${msg.peerId} entered signaling channel.`);
         // Set up connection as initiator
@@ -249,8 +287,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
       case 'peer-left':
         store.appendIceLog(`[Signaling] Peer ${msg.peerId} disconnected.`);
+        const oldState = store.peers.get(msg.peerId)?.connectionState;
         store.removePeer(msg.peerId);
         room.removePeer(msg.peerId);
+        if (oldState === 'connected') {
+          showToast('Peer left the room');
+        }
         
         // System message logging
         store.addMessage({
@@ -530,6 +572,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       {/* Developer Dashboard slide-out */}
       {store.devModeEnabled && (
         <DevPanel onRefreshStats={handleManualRefreshStats} />
+      )}
+
+      {/* Simple toast notifications */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: '#242424',
+            color: '#e6e8e6',
+            border: '1px solid #2e2e2e',
+            borderRadius: '6px',
+            padding: '10px 16px',
+            fontFamily: 'Inter, sans-serif',
+            fontSize: '14px',
+            zIndex: 1000,
+            opacity: toast.visible ? 1 : 0,
+            transition: 'opacity 0.3s ease-in-out',
+            pointerEvents: 'none',
+          }}
+        >
+          {toast.message}
+        </div>
       )}
     </div>
   );

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "signal": "node server.js"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
@@ -20,6 +21,7 @@
     "react": "^18",
     "react-dom": "^18",
     "tailwind-merge": "^3.6.0",
+    "ws": "^8.21.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
