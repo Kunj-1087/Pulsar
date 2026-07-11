@@ -54,6 +54,8 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
 
     const fullText = "PULSAR NETWORK — NODE INITIALIZATION";
     let textIdx = 0;
+    let cursorTimer: NodeJS.Timeout | null = null;
+    let elementsTimer: NodeJS.Timeout | null = null;
     
     const interval = setInterval(() => {
       setTypedText(fullText.substring(0, textIdx + 1));
@@ -64,23 +66,21 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
         
         // Show blinking block cursor for 800ms
         setShowCursor(true);
-        const cursorTimer = setTimeout(() => {
+        cursorTimer = setTimeout(() => {
           setShowCursor(false);
           
           // Wait 600ms to fade in remaining elements
-          const elementsTimer = setTimeout(() => {
+          elementsTimer = setTimeout(() => {
             setElementsVisible(true);
           }, 600);
-          
-          return () => clearTimeout(elementsTimer);
         }, 800);
-        
-        return () => clearTimeout(cursorTimer);
       }
     }, 40);
 
     return () => {
       clearInterval(interval);
+      if (cursorTimer) clearTimeout(cursorTimer);
+      if (elementsTimer) clearTimeout(elementsTimer);
     };
   }, [checking, identity]);
 
@@ -171,13 +171,8 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
     );
   }
 
-  // Active state: user logged in, ready to mount children
-  if (identity && fadeState === 'idle') {
-    return <>{children}</>;
-  }
-
   const showIdentityScreen = !identity || fadeState === 'fade-out';
-  const showChildren = identity && (fadeState === 'fade-in' || fadeState === 'blackout');
+  const showChildren = !!identity;
 
   // Input validation state
   const isInputInvalid = handle.length > 0 && handle.length < 3;
@@ -330,7 +325,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
         <div
           className={cn(
             "w-full h-full transition-opacity duration-300",
-            fadeState === 'fade-in' ? "opacity-100" : "opacity-0"
+            (fadeState === 'idle' || fadeState === 'fade-in') ? "opacity-100" : "opacity-0"
           )}
         >
           {children}
