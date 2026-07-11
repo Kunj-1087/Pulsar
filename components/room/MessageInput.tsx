@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Paperclip, Send, AlertCircle } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { cn } from '../../lib/utils';
 
 interface MessageInputProps {
   onSendMessage: (text: string) => void;
