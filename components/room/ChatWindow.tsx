@@ -24,17 +24,27 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const [displayName, setDisplayName] = useState('');
   const [myPeerId] = useState(() => generateId());
 
-  // Simple toast notification system
-  const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
-  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Stacked toast notifications
+  interface ToastItem {
+    id: string;
+    message: string;
+    visible: boolean;
+  }
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const showToast = (message: string) => {
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-    }
-    setToast({ message, visible: true });
-    toastTimeoutRef.current = setTimeout(() => {
-      setToast(prev => prev ? { ...prev, visible: false } : null);
+  const addToast = (message: string) => {
+    const id = Math.random().toString();
+    setToasts((prev) => [...prev, { id, message, visible: true }]);
+
+    // Slide out/fade after 3s
+    setTimeout(() => {
+      setToasts((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, visible: false } : t))
+      );
+      // Remove from state list after 150ms transition
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((t) => t.id !== id));
+      }, 150);
     }, 3000);
   };
 
@@ -43,6 +53,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const roomRef = useRef<PulsarRoom | null>(null);
   const fileReceiversRef = useRef<Map<string, FileReceiver>>(new Map());
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const disconnectTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   // Handle Ctrl+Shift+D / Cmd+Shift+D keyboard shortcuts for Dev Panel
   useEffect(() => {
@@ -118,20 +129,62 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         onPeerStateChange: (peerId, state) => {
           const oldPeer = store.peers.get(peerId);
           store.updatePeer(peerId, { connectionState: state });
+
           if (state === 'connected') {
-            store.setIsConnected(true);
-            store.setIsConnecting(false);
+            const timer = disconnectTimersRef.current.get(peerId);
+            if (timer) {
+              clearTimeout(timer);
+              disconnectTimersRef.current.delete(peerId);
+            }
+
             if (oldPeer?.connectionState !== 'connected') {
-              showToast('Peer connected and is now in the room');
+              const name = oldPeer?.displayName || peerId.substring(0, 8);
+              addToast(`Peer joined the room: ${name}`);
+
+              // Send our peer info immediately
+              if (displayName) {
+                roomRef.current?.sendToPeer(peerId, {
+                  type: 'peer-info',
+                  peerId: myPeerId,
+                  displayName,
+                });
+              }
             }
-          } else {
-            // Check if any peer remains connected
-            const list = Array.from(room.peers.values());
-            const hasConnected = list.some(p => p.peerConnection.connectionState === 'connected');
-            store.setIsConnected(hasConnected);
-            if ((state === 'disconnected' || state === 'failed') && oldPeer?.connectionState === 'connected') {
-              showToast('Peer left the room');
+          } else if (state === 'disconnected') {
+            if (oldPeer?.connectionState === 'connected' && !disconnectTimersRef.current.has(peerId)) {
+              const timer = setTimeout(() => {
+                disconnectTimersRef.current.delete(peerId);
+                const currentPeer = store.peers.get(peerId);
+                if (currentPeer && currentPeer.connectionState === 'disconnected') {
+                  store.removePeer(peerId);
+                  roomRef.current?.removePeer(peerId);
+
+                  const name = currentPeer.displayName || peerId.substring(0, 8);
+                  addToast(`Peer left the room: ${name}`);
+
+                  store.addMessage({
+                    id: generateId(),
+                    roomId,
+                    type: 'system',
+                    text: `Peer left the room.`,
+                    sender: 'System',
+                    senderId: 'system',
+                    ts: Date.now(),
+                    isOwn: false,
+                  });
+                }
+              }, 5000);
+              disconnectTimersRef.current.set(peerId, timer);
             }
+          } else if (state === 'failed') {
+            const timer = disconnectTimersRef.current.get(peerId);
+            if (timer) {
+              clearTimeout(timer);
+              disconnectTimersRef.current.delete(peerId);
+            }
+            store.removePeer(peerId);
+            roomRef.current?.removePeer(peerId);
+            addToast('Connection to a peer failed');
           }
         },
         onIceLog: (entry) => {
@@ -193,7 +246,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     return () => {
       active = false;
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
-      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      
+      // Clear and clean all disconnect timers
+      disconnectTimersRef.current.forEach((timer) => clearTimeout(timer));
+      disconnectTimersRef.current.clear();
       
       // Close WebRTC room & Ably connection
       roomRef.current?.close();
@@ -213,28 +269,28 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         store.appendIceLog(`[Signaling] Joined room. Existing peers: ${msg.existingPeers?.join(', ') || 'None'}`);
         if (msg.existingPeers) {
           for (const peerId of msg.existingPeers) {
+            const isInitiator = myPeerId < peerId;
             store.addPeer({
               peerId,
               displayName: `Peer_${peerId.substring(0, 4)}`,
-              connectionState: 'connecting',
+              connectionState: isInitiator ? 'connecting' : 'new',
               isHost: false,
             });
-            // Add connection as non-initiator (joining client waits for offer)
-            await room.addPeer(peerId, false);
+            await room.addPeer(peerId, isInitiator);
           }
         }
         break;
 
       case 'peer-joined':
         store.appendIceLog(`[Signaling] Peer ${msg.peerId} entered signaling channel.`);
-        // Set up connection as initiator
+        const isInitiator = myPeerId < msg.peerId;
         store.addPeer({
           peerId: msg.peerId,
           displayName: `Peer_${msg.peerId.substring(0, 4)}`,
-          connectionState: 'new',
+          connectionState: isInitiator ? 'connecting' : 'new',
           isHost: false,
         });
-        await room.addPeer(msg.peerId, true);
+        await room.addPeer(msg.peerId, isInitiator);
         break;
 
       case 'offer':
@@ -242,14 +298,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           store.appendIceLog(`[Signaling] Received WebRTC offer from ${msg.fromPeer}.`);
           store.setRemoteSdp(msg.sdp.sdp || '');
 
-          store.addPeer({
-            peerId: msg.fromPeer,
-            displayName: `Peer_${msg.fromPeer.substring(0, 4)}`,
-            connectionState: 'connecting',
-            isHost: false,
-          });
+          let rxPeer = room.peers.get(msg.fromPeer);
+          if (!rxPeer) {
+            store.addPeer({
+              peerId: msg.fromPeer,
+              displayName: `Peer_${msg.fromPeer.substring(0, 4)}`,
+              connectionState: 'connecting',
+              isHost: false,
+            });
+            rxPeer = await room.addPeer(msg.fromPeer, false);
+          }
           
-          const rxPeer = await room.addPeer(msg.fromPeer, false);
           const answer = await rxPeer.handleOffer(msg.sdp);
           store.setLocalSdp(answer.sdp || '');
 
@@ -281,12 +340,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
       case 'peer-left':
         store.appendIceLog(`[Signaling] Peer ${msg.peerId} disconnected.`);
-        const oldState = store.peers.get(msg.peerId)?.connectionState;
+        
+        // Immediately cancel disconnect timer
+        const timer = disconnectTimersRef.current.get(msg.peerId);
+        if (timer) {
+          clearTimeout(timer);
+          disconnectTimersRef.current.delete(msg.peerId);
+        }
+
+        const peerObj = store.peers.get(msg.peerId);
+        const name = peerObj?.displayName || msg.peerId.substring(0, 8);
+
         store.removePeer(msg.peerId);
         room.removePeer(msg.peerId);
-        if (oldState === 'connected') {
-          showToast('Peer left the room');
-        }
+
+        addToast(`Peer left the room: ${name}`);
         
         // System message logging
         store.addMessage({
@@ -299,6 +367,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           ts: Date.now(),
           isOwn: false,
         });
+        break;
+
+      case 'error':
+        if (msg.message === 'room-full') {
+          store.addMessage({
+            id: generateId(),
+            roomId,
+            type: 'system',
+            text: 'Room is full (max 6 peers). You could not join.',
+            sender: 'System',
+            senderId: 'system',
+            ts: Date.now(),
+            isOwn: false,
+          });
+          addToast('Room is full');
+          signalingRef.current?.disconnect();
+        }
         break;
     }
   };
@@ -568,30 +653,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         <DevPanel onRefreshStats={handleManualRefreshStats} />
       )}
 
-      {/* Simple toast notifications */}
-      {toast && (
-        <div
-          style={{
-            position: 'fixed',
-            top: '24px',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: '#242424',
-            color: '#e6e8e6',
-            border: '1px solid #2e2e2e',
-            borderRadius: '6px',
-            padding: '10px 16px',
-            fontFamily: 'Inter, sans-serif',
-            fontSize: '14px',
-            zIndex: 1000,
-            opacity: toast.visible ? 1 : 0,
-            transition: 'opacity 0.3s ease-in-out',
-            pointerEvents: 'none',
-          }}
-        >
-          {toast.message}
-        </div>
-      )}
+      {/* Stacked toast notifications */}
+      <div
+        style={{
+          position: 'fixed',
+          top: '24px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px',
+          zIndex: 1000,
+          pointerEvents: 'none',
+        }}
+      >
+        {toasts.map((t) => (
+          <div
+            key={t.id}
+            style={{
+              background: '#242424',
+              color: '#e6e8e6',
+              border: '1px solid #2e2e2e',
+              borderRadius: '6px',
+              padding: '10px 16px',
+              fontFamily: 'Inter, sans-serif',
+              fontSize: '14px',
+              fontWeight: 400,
+              opacity: t.visible ? 1 : 0,
+              transition: t.visible ? 'opacity 150ms ease-in' : 'opacity 150ms ease-out',
+            }}
+          >
+            {t.message}
+          </div>
+        ))}
+      </div>
     </div>
   );
 };

@@ -6,9 +6,10 @@ interface ChatStore {
   setRoom: (room: Room | null) => void;
   
   peers: Map<string, Peer>;
-  addPeer: (peer: Peer) => void;
+  addPeer: (peer: Partial<Peer> & { peerId: string }) => void;
   updatePeer: (peerId: string, update: Partial<Peer>) => void;
   removePeer: (peerId: string) => void;
+  getPeerCount: () => number;
   
   messages: Message[];
   setMessages: (messages: Message[]) => void;
@@ -39,15 +40,23 @@ interface ChatStore {
   reset: () => void;
 }
 
-export const useChatStore = create<ChatStore>((set) => ({
+export const useChatStore = create<ChatStore>((set, get) => ({
   room: null,
   setRoom: (room) => set({ room }),
   
   peers: new Map(),
   addPeer: (peer) => set((state) => {
     const next = new Map(state.peers);
-    next.set(peer.peerId, peer);
-    return { peers: next };
+    const existing = next.get(peer.peerId);
+    next.set(peer.peerId, {
+      displayName: `Peer_${peer.peerId.substring(0, 4)}`,
+      connectionState: 'connecting',
+      isHost: false,
+      ...existing,
+      ...peer,
+    });
+    const isConnected = Array.from(next.values()).some((p) => p.connectionState === 'connected');
+    return { peers: next, isConnected };
   }),
   updatePeer: (peerId, update) => set((state) => {
     const next = new Map(state.peers);
@@ -55,7 +64,8 @@ export const useChatStore = create<ChatStore>((set) => ({
     if (existing) {
       next.set(peerId, { ...existing, ...update });
     }
-    return { peers: next };
+    const isConnected = Array.from(next.values()).some((p) => p.connectionState === 'connected');
+    return { peers: next, isConnected };
   }),
   removePeer: (peerId) => set((state) => {
     const next = new Map(state.peers);
@@ -65,8 +75,12 @@ export const useChatStore = create<ChatStore>((set) => ({
     const nextTyping = new Set(state.typingPeers);
     nextTyping.delete(peerId);
     
-    return { peers: next, typingPeers: nextTyping };
+    const isConnected = Array.from(next.values()).some((p) => p.connectionState === 'connected');
+    return { peers: next, typingPeers: nextTyping, isConnected };
   }),
+  getPeerCount: () => {
+    return get().peers.size;
+  },
   
   messages: [],
   setMessages: (messages) => set({ messages }),

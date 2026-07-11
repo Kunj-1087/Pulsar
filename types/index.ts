@@ -24,7 +24,7 @@ export interface FileRef {
 
 export interface Peer {
   peerId: string;
-  displayName: string;
+  displayName?: string;
   connectionState: RTCPeerConnectionState;
   isHost: boolean;
 }

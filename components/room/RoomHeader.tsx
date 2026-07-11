@@ -100,9 +100,16 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
         {/* Right: Actions & Badges */}
         <div className="flex items-center gap-2">
           {/* Peer Count Badge */}
-          <div className="flex items-center gap-1.5 px-2.5 h-8 bg-bg-surface border border-border-default rounded font-mono text-xs text-text-primary">
-            <Users className="w-3.5 h-3.5 text-text-muted" />
-            <span>{connectedPeersCount}</span>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 px-2.5 h-8 bg-bg-surface border border-border-default rounded font-mono text-xs text-text-primary">
+              <Users className="w-3.5 h-3.5 text-text-muted" />
+              <span>{connectedPeersCount}</span>
+            </div>
+            {connectedPeersCount >= 5 && (
+              <span className="text-[10px] font-mono text-status-yellow uppercase tracking-wider">
+                Room full
+              </span>
+            )}
           </div>
 
           {/* QR Trigger */}

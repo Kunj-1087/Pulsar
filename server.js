@@ -22,6 +22,15 @@ wss.on('connection', (ws) => {
         }
         const room = rooms.get(currentRoom);
 
+        if (room.size >= 6) {
+          ws.send(JSON.stringify({
+            type: 'error',
+            message: 'room-full',
+          }));
+          ws.close();
+          return;
+        }
+
         // Tell existing peers that a new peer joined
         room.forEach((peer) => {
           if (peer !== ws && peer.readyState === 1) {
@@ -50,12 +59,11 @@ wss.on('connection', (ws) => {
         ws._roomId = currentRoom;
         console.log(`[Pulsar] Peer ${msg.peerId} joined room ${currentRoom}. Room size: ${room.size}`);
       } else {
-        // Relay all other messages (offer, answer, ice-candidate) to target peer or broadcast
+        // Relay all other messages (offer, answer, ice-candidate) to target peer
         if (currentRoom && rooms.has(currentRoom)) {
           rooms.get(currentRoom).forEach((peer) => {
             if (peer !== ws && peer.readyState === 1) {
-              // If message has toPeer, only send to that peer
-              if (!msg.toPeer || peer._peerId === msg.toPeer) {
+              if (peer._peerId === msg.toPeer) {
                 peer.send(rawData.toString());
               }
             }

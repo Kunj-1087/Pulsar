@@ -9,10 +9,12 @@ export class PulsarPeer {
   isInitiator: boolean;
   
   private candidateQueue: RTCIceCandidateInit[] = [];
-  private onIceCandidate: (candidate: RTCIceCandidateInit) => void;
-  private onMessage: (msg: DataChannelMessage) => void;
-  private onStateChange: (state: RTCPeerConnectionState) => void;
-  private onIceLog: (log: string) => void;
+  
+  public onIceCandidate?: (candidate: RTCIceCandidateInit) => void;
+  public onMessage?: (msg: DataChannelMessage) => void;
+  public onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
+  public onDataChannelOpen?: () => void;
+  public onIceLog: (log: string) => void;
   
   private messageCount = 0;
   private bytesSentAccumulator = 0;
@@ -22,9 +24,10 @@ export class PulsarPeer {
     peerId: string;
     myId: string;
     isInitiator: boolean;
-    onIceCandidate: (candidate: RTCIceCandidateInit) => void;
-    onMessage: (msg: DataChannelMessage) => void;
-    onStateChange: (state: RTCPeerConnectionState) => void;
+    onIceCandidate?: (candidate: RTCIceCandidateInit) => void;
+    onMessage?: (msg: DataChannelMessage) => void;
+    onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
+    onDataChannelOpen?: () => void;
     onIceLog: (log: string) => void;
   }) {
     this.peerId = config.peerId;
@@ -32,7 +35,8 @@ export class PulsarPeer {
     this.isInitiator = config.isInitiator;
     this.onIceCandidate = config.onIceCandidate;
     this.onMessage = config.onMessage;
-    this.onStateChange = config.onStateChange;
+    this.onConnectionStateChange = config.onConnectionStateChange;
+    this.onDataChannelOpen = config.onDataChannelOpen;
     this.onIceLog = config.onIceLog;
 
     this.initialize();
@@ -58,7 +62,7 @@ export class PulsarPeer {
       if (event.candidate) {
         console.log(`[Pulsar WebRTC] Gathered local ICE candidate for peer ${this.peerId}:`, event.candidate.candidate);
         this.onIceLog(`[ICE] Local candidate gathered: ${event.candidate.candidate}`);
-        this.onIceCandidate(event.candidate.toJSON());
+        this.onIceCandidate?.(event.candidate.toJSON());
       }
     };
 
@@ -67,7 +71,7 @@ export class PulsarPeer {
       const state = this.peerConnection.connectionState;
       console.log(`[Pulsar WebRTC] Connection state changed for peer ${this.peerId} to: ${state}`);
       this.onIceLog(`[State] Connection state changed to: ${state}`);
-      this.onStateChange(state);
+      this.onConnectionStateChange?.(state);
     };
 
     this.peerConnection.oniceconnectionstatechange = () => {
@@ -99,14 +103,14 @@ export class PulsarPeer {
     channel.onopen = () => {
       console.log(`[Pulsar WebRTC] DataChannel '${channel.label}' is OPEN for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Data channel is OPEN`);
-      // Update connection state
-      this.onStateChange('connected');
+      this.onDataChannelOpen?.();
+      this.onConnectionStateChange?.('connected');
     };
 
     channel.onclose = () => {
       console.log(`[Pulsar WebRTC] DataChannel '${channel.label}' is CLOSED for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Data channel is CLOSED`);
-      this.onStateChange('disconnected');
+      this.onConnectionStateChange?.('disconnected');
     };
 
     channel.onerror = (error) => {
@@ -123,10 +127,9 @@ export class PulsarPeer {
         if (typeof rawData === 'string') {
           this.bytesReceivedAccumulator += rawData.length;
           const msg = JSON.parse(rawData) as DataChannelMessage;
-          this.onMessage(msg);
+          this.onMessage?.(msg);
         } else if (rawData instanceof ArrayBuffer) {
           this.bytesReceivedAccumulator += rawData.byteLength;
-          // Binary array buffers are not expected in JSON text mode but handled if they happen
         }
       } catch (err) {
         console.error('Failed to parse DataChannel message:', err);
@@ -354,7 +357,7 @@ export class PulsarRoom {
         });
       },
       onMessage: (msg) => this.onPeerMessage(peerId, msg),
-      onStateChange: (state) => this.onPeerStateChange(peerId, state),
+      onConnectionStateChange: (state) => this.onPeerStateChange(peerId, state),
       onIceLog: (log) => this.onIceLog(`[Peer:${peerId}] ${log}`),
     });
 
@@ -424,6 +427,23 @@ export class PulsarRoom {
         peer.sendMessage(msg);
       }
     });
+  }
+
+  /**
+   * Sends a message to a specific peer's DataChannel.
+   */
+  sendToPeer(peerId: string, msg: DataChannelMessage) {
+    const peer = this.peers.get(peerId);
+    if (peer && peer.dataChannel && peer.dataChannel.readyState === 'open') {
+      peer.sendMessage(msg);
+    }
+  }
+
+  /**
+   * Returns the number of peers currently in the Map.
+   */
+  getPeerCount(): number {
+    return this.peers.size;
   }
 
   /**
