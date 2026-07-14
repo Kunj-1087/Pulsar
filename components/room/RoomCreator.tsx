@@ -78,7 +78,7 @@ export const RoomCreator: React.FC = () => {
     const cleanCode = roomCode.trim().toUpperCase();
 
     if (!isValidRoomCode(cleanCode)) {
-      setJoinError('Invalid room code format (must be 6 alphanumeric chars).');
+      setJoinError('Invalid room code format (must be 8 alphanumeric chars).');
       setIsJoining(false);
       return;
     }

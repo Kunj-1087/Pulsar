@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Check, QrCode, Share2, Terminal, Users, X } from 'lucide-react';
+import { Copy, Check, QrCode, Share2, Terminal, Users, X, Lock, ShieldAlert } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -81,9 +81,15 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
     }
   };
 
-  const connectedPeersCount = Array.from(peers.values()).filter(
+  const peerList = Array.from(peers.values());
+  const connectedPeers = peerList.filter(
     (p) => p.connectionState === 'connected'
-  ).length;
+  );
+  const connectedPeersCount = connectedPeers.length;
+
+  const hasPeers = connectedPeersCount > 0;
+  const allPeersE2EE = hasPeers && connectedPeers.every((p) => p.e2eeStatus === 'established');
+  const anyPeerE2EEFailed = connectedPeers.some((p) => p.e2eeStatus === 'failed');
 
   return (
     <>
@@ -96,6 +102,24 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
           <span className="hidden md:inline text-[9px] font-mono text-text-muted px-1.5 py-0.5 border border-border-default rounded-sm uppercase">
             v1.0-P2P
           </span>
+          {hasPeers && (
+            allPeersE2EE ? (
+              <span className="flex items-center gap-1 text-[10px] font-mono text-status-green border border-status-green/30 bg-status-green/10 rounded px-1.5 py-0.5" title="All peer channels are End-to-End Encrypted">
+                <Lock className="w-2.5 h-2.5" />
+                <span>E2EE</span>
+              </span>
+            ) : anyPeerE2EEFailed ? (
+              <span className="flex items-center gap-1 text-[10px] font-mono text-status-red border border-status-red/30 bg-status-red/10 rounded px-1.5 py-0.5 animate-pulse" title="Security alert: E2EE key agreement failed for some peers">
+                <ShieldAlert className="w-2.5 h-2.5" />
+                <span>E2EE ALERT</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-[10px] font-mono text-status-yellow border border-status-yellow/30 bg-status-yellow/10 rounded px-1.5 py-0.5" title="Encrypting peer channels...">
+                <Lock className="w-2.5 h-2.5 animate-pulse" />
+                <span>SECURE PENDING</span>
+              </span>
+            )
+          )}
         </div>
 
         {/* Center: Identity & Monospace room code display */}

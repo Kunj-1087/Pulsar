@@ -1,4 +1,5 @@
 import { DataChannelMessage } from '../types';
+import { encryptChunk } from './crypto';
 
 export const HEADER_SIZE = 47;
 
@@ -81,6 +82,97 @@ export function decodeBinaryFrame(arrayBuffer: ArrayBuffer): BinaryFrame {
 }
 
 /**
+ * Encodes an encrypted control frame (Type 0x01).
+ */
+export function encodeEncryptedControlFrame(iv: Uint8Array, ciphertext: Uint8Array): ArrayBuffer {
+  const buffer = new ArrayBuffer(15 + ciphertext.byteLength);
+  const view = new DataView(buffer);
+  const uint8 = new Uint8Array(buffer);
+
+  view.setUint8(0, 0x50); // 'P'
+  view.setUint8(1, 0x01); // Version 1
+  view.setUint8(2, 0x01); // Type 0x01: Encrypted control message
+
+  uint8.set(iv, 3);
+  uint8.set(ciphertext, 15);
+  return buffer;
+}
+
+/**
+ * Decodes an encrypted control frame (Type 0x01).
+ */
+export function decodeEncryptedControlFrame(buffer: ArrayBuffer): { iv: Uint8Array; ciphertext: Uint8Array } {
+  if (buffer.byteLength < 15) {
+    throw new Error('[Pulsar FileTransfer] Encrypted control frame too small');
+  }
+  const iv = new Uint8Array(buffer, 3, 12);
+  const ciphertext = new Uint8Array(buffer, 15, buffer.byteLength - 15);
+  return { iv, ciphertext };
+}
+
+/**
+ * Encodes an encrypted file chunk frame (Type 0x02).
+ */
+export function encodeEncryptedFileFrame(
+  transferId: string,
+  chunkIndex: number,
+  ciphertextLength: number,
+  iv: Uint8Array,
+  ciphertext: Uint8Array
+): ArrayBuffer {
+  const transferIdBytes = new TextEncoder().encode(transferId);
+  const buffer = new ArrayBuffer(59 + ciphertext.byteLength);
+  const view = new DataView(buffer);
+  const uint8 = new Uint8Array(buffer);
+
+  view.setUint8(0, 0x50); // 'P'
+  view.setUint8(1, 0x01); // Version 1
+  view.setUint8(2, 0x02); // Type 0x02: Encrypted file chunk
+
+  // Write transfer ID (up to 36 bytes) starting at byte index 3
+  const writeLen = Math.min(transferIdBytes.length, 36);
+  uint8.set(transferIdBytes.subarray(0, writeLen), 3);
+
+  view.setUint32(39, chunkIndex, false); // Big-endian
+  view.setUint32(43, ciphertextLength, false); // Big-endian
+
+  uint8.set(iv, 47);
+  uint8.set(ciphertext, 59);
+  return buffer;
+}
+
+/**
+ * Decodes an encrypted file chunk frame (Type 0x02).
+ */
+export function decodeEncryptedFileFrame(buffer: ArrayBuffer): {
+  transferId: string;
+  chunkIndex: number;
+  ciphertextLength: number;
+  iv: Uint8Array;
+  ciphertext: Uint8Array;
+} {
+  if (buffer.byteLength < 59) {
+    throw new Error('[Pulsar FileTransfer] Encrypted file frame too small');
+  }
+  const view = new DataView(buffer);
+  const transferIdBytes = new Uint8Array(buffer, 3, 36);
+  let transferId = new TextDecoder().decode(transferIdBytes);
+  const nullIdx = transferId.indexOf('\0');
+  if (nullIdx !== -1) {
+    transferId = transferId.substring(0, nullIdx);
+  }
+  transferId = transferId.trim().replace(/\0/g, '');
+
+  const chunkIndex = view.getUint32(39, false);
+  const ciphertextLength = view.getUint32(43, false);
+
+  const iv = new Uint8Array(buffer, 47, 12);
+  const ciphertext = new Uint8Array(buffer, 59, buffer.byteLength - 59);
+
+  return { transferId, chunkIndex, ciphertextLength, iv, ciphertext };
+}
+
+/**
  * Sends a file over an RTCDataChannel in chunks using the binary protocol.
  */
 export async function sendFile(
@@ -90,7 +182,8 @@ export async function sendFile(
   senderName: string,
   onProgress: (progress: number) => void,
   isCancelled: () => boolean,
-  checkBackpressure: () => Promise<void>
+  checkBackpressure: () => Promise<void>,
+  encryptionKey?: CryptoKey
 ): Promise<void> {
   const rawChunkSize = Number(process.env.NEXT_PUBLIC_CHUNK_SIZE_BYTES) || 16384;
   const CLAMP_MIN = 1024;
@@ -113,6 +206,8 @@ export async function sendFile(
     totalChunks,
     sender: senderName,
   };
+  // Note: the metaMsg itself will be encrypted if sent via our encrypted control channel path in ChatWindow,
+  // but here it represents metadata channel messaging structure.
   channel.send(JSON.stringify(metaMsg));
 
   // 2. Read and send file in chunks
@@ -148,7 +243,14 @@ export async function sendFile(
 
     try {
       const arrayBuffer = await readNextChunk();
-      const frame = encodeBinaryFrame(fileId, chunkIndex, arrayBuffer);
+      
+      let frame: ArrayBuffer;
+      if (encryptionKey) {
+        const { iv, ciphertext } = await encryptChunk(encryptionKey, arrayBuffer);
+        frame = encodeEncryptedFileFrame(fileId, chunkIndex, ciphertext.byteLength, iv, ciphertext);
+      } else {
+        frame = encodeBinaryFrame(fileId, chunkIndex, arrayBuffer);
+      }
       
       channel.send(frame);
       onProgress(Math.round(((chunkIndex + 1) / totalChunks) * 100));

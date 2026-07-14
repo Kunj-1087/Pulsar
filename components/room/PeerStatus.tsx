@@ -1,6 +1,7 @@
 import React from 'react';
 import { useChatStore } from '../../store/chatStore';
 import { Badge } from '../ui/Badge';
+import { Lock, ShieldAlert } from 'lucide-react';
 
 export const PeerStatus: React.FC = () => {
   const { peers, roomStatus } = useChatStore();
@@ -66,6 +67,15 @@ export const PeerStatus: React.FC = () => {
                     style={{ backgroundColor: color }}
                   />
                   <span className="text-text-bright">@{handle}</span>
+                  {p.e2eeStatus === 'established' && (
+                    <Lock className="w-3 h-3 text-status-green" title="E2EE Active" />
+                  )}
+                  {p.e2eeStatus === 'pending' && (
+                    <Lock className="w-3 h-3 text-status-yellow animate-pulse" title="E2EE Negotiating..." />
+                  )}
+                  {p.e2eeStatus === 'failed' && (
+                    <ShieldAlert className="w-3 h-3 text-status-red" title="E2EE Failed" />
+                  )}
                 </div>
               );
             })}

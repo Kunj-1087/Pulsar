@@ -33,6 +33,8 @@ export interface Peer {
   peerColor?: string;
   connectionState: PeerConnectionState;
   isHost: boolean;
+  e2eeStatus?: 'pending' | 'established' | 'failed';
+  e2eeSafetyNumber?: string;
 }
 
 export interface Room {
@@ -49,7 +51,8 @@ export type DataChannelMessage =
   | { type: 'file-complete'; id: string }
   | { type: 'file-cancel'; id: string; reason?: string }
   | { type: 'typing'; senderId: string; displayName: string; isTyping: boolean }
-  | { type: 'peer-info'; peerId: string; displayName: string; handle?: string; peerColor?: string };
+  | { type: 'peer-info'; peerId: string; displayName: string; handle?: string; peerColor?: string }
+  | { type: 'key-exchange'; publicKey: JsonWebKey };
 
 // Signaling protocol (compatible with Ably)
 export type SignalingMessage =

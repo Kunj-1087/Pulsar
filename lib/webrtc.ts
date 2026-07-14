@@ -1,6 +1,22 @@
 import { DataChannelMessage, SignalingMessage, ConnectionStats, PeerConnectionState } from '../types';
-import { sendFile } from './fileTransfer';
+import {
+  sendFile,
+  encodeBinaryFrame,
+  encodeEncryptedControlFrame,
+  decodeEncryptedControlFrame,
+  decodeEncryptedFileFrame
+} from './fileTransfer';
 import { useChatStore } from '../store/chatStore';
+import {
+  generateECDHKeyPair,
+  exportPublicKey,
+  importPublicKey,
+  deriveAESGCMKey,
+  encryptMessage,
+  decryptMessage,
+  decryptChunk,
+  deriveSafetyNumber
+} from './crypto';
 
 export class PulsarPeer {
   peerConnection!: RTCPeerConnection;
@@ -28,6 +44,16 @@ export class PulsarPeer {
 
   private resumeResolve: (() => void) | null = null;
   private resumeReject: ((err: Error) => void) | null = null;
+
+  private ecdhKeyPair: CryptoKeyPair | null = null;
+  private remotePublicKeyJwk: JsonWebKey | null = null;
+  private aesKey: CryptoKey | null = null;
+  public e2eeStatus: 'pending' | 'established' | 'failed' = 'pending';
+  public e2eeSafetyNumber: string = '';
+  private pendingOutgoingMessages: DataChannelMessage[] = [];
+  public e2eeDecryptionFailures = 0;
+  public e2eeMessagesEncrypted = 0;
+  public e2eeMessagesDecrypted = 0;
 
   constructor(config: {
     peerId: string;
@@ -190,11 +216,34 @@ export class PulsarPeer {
     channel.binaryType = 'arraybuffer'; // Set binaryType for binary chunk frame reception
     channel.bufferedAmountLowThreshold = 65536; // 64KB backpressure trigger threshold
 
-    channel.onopen = () => {
+    channel.onopen = async () => {
       console.log(`[Pulsar WebRTC] DataChannel '${channel.label}' is OPEN for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Data channel is OPEN`);
-      this.onDataChannelOpen?.();
       this.onConnectionStateChange?.('connected');
+      
+      try {
+        this.e2eeStatus = 'pending';
+        useChatStore.getState().updatePeer(this.peerId, {
+          e2eeStatus: 'pending'
+        });
+        
+        // Generate ECDH key pair
+        this.ecdhKeyPair = await generateECDHKeyPair();
+        const jwk = await exportPublicKey(this.ecdhKeyPair.publicKey);
+        
+        // Send our public key JWK in plaintext
+        this.sendPlaintextMessage({
+          type: 'key-exchange',
+          publicKey: jwk
+        });
+        this.onIceLog(`[E2EE] Local public key sent via key-exchange message`);
+      } catch (err) {
+        console.error('[Pulsar E2EE] Failed to generate/export local keys:', err);
+        this.e2eeStatus = 'failed';
+        useChatStore.getState().updatePeer(this.peerId, {
+          e2eeStatus: 'failed'
+        });
+      }
     };
 
     channel.onclose = () => {
@@ -227,7 +276,7 @@ export class PulsarPeer {
       }
     };
 
-    channel.onmessage = (event) => {
+    channel.onmessage = async (event) => {
       try {
         const rawData = event.data;
         
@@ -236,15 +285,163 @@ export class PulsarPeer {
         if (typeof rawData === 'string') {
           this.bytesReceivedAccumulator += rawData.length;
           const msg = JSON.parse(rawData) as DataChannelMessage;
-          this.onMessage?.(msg);
+          
+          if (msg.type === 'key-exchange') {
+            this.onIceLog(`[E2EE] Received remote public key via key-exchange`);
+            await this.completeKeyAgreement(msg.publicKey);
+            return;
+          }
+          
+          if (this.e2eeStatus === 'established') {
+            console.warn(`[Pulsar E2EE] Dropping unencrypted plaintext control string received after key agreement: ${msg.type}`);
+            return;
+          }
+          
+          console.warn(`[Pulsar E2EE] Dropping application message received before key agreement: ${msg.type}`);
         } else if (rawData instanceof ArrayBuffer) {
           this.bytesReceivedAccumulator += rawData.byteLength;
-          this.onBinaryMessage?.(rawData);
+          if (rawData.byteLength < 3) {
+            console.warn('[Pulsar E2EE] Received oversized or malformed binary packet');
+            return;
+          }
+          const view = new DataView(rawData);
+          const magic = view.getUint8(0);
+          const version = view.getUint8(1);
+          const frameType = view.getUint8(2);
+          
+          if (magic !== 0x50 || version !== 0x01) {
+            console.warn('[Pulsar E2EE] Invalid binary magic/version');
+            return;
+          }
+          
+          if (frameType === 0x01) {
+            // Encrypted control frame
+            if (!this.aesKey) {
+              console.warn('[Pulsar E2EE] Received encrypted control frame before key agreement complete');
+              return;
+            }
+            try {
+              const { iv, ciphertext } = decodeEncryptedControlFrame(rawData);
+              const plaintextStr = await decryptMessage(this.aesKey, iv, ciphertext);
+              this.e2eeMessagesDecrypted++;
+              const msg = JSON.parse(plaintextStr) as DataChannelMessage;
+              this.onMessage?.(msg);
+            } catch (err) {
+              console.error('[Pulsar E2EE] Failed to decrypt control frame:', err);
+              this.e2eeDecryptionFailures++;
+            }
+          } else if (frameType === 0x02) {
+            // Encrypted file chunk frame
+            if (!this.aesKey) {
+              console.warn('[Pulsar E2EE] Received encrypted file chunk before key agreement complete');
+              return;
+            }
+            try {
+              const { transferId, chunkIndex, iv, ciphertext } = decodeEncryptedFileFrame(rawData);
+              const decryptedPayload = await decryptChunk(this.aesKey, iv, ciphertext);
+              this.e2eeMessagesDecrypted++;
+              
+              // Re-assemble back to Type 0x00 binary frame for ChatWindow receiver
+              const reassembled = encodeBinaryFrame(transferId, chunkIndex, decryptedPayload);
+              this.onBinaryMessage?.(reassembled);
+            } catch (err) {
+              console.error('[Pulsar E2EE] Failed to decrypt file chunk frame:', err);
+              this.e2eeDecryptionFailures++;
+              
+              // Abort/Cancel this transfer
+              try {
+                const { transferId } = decodeEncryptedFileFrame(rawData);
+                window.dispatchEvent(new CustomEvent('pulsar-cancel-transfer', {
+                  detail: { fileId: transferId }
+                }));
+              } catch {}
+            }
+          } else {
+            console.warn(`[Pulsar E2EE] Unsupported frame type: ${frameType}`);
+          }
         }
       } catch (err) {
-        console.error('Failed to parse DataChannel message:', err);
+        console.error('Failed to parse/decrypt DataChannel message:', err);
       }
     };
+  }
+
+  private async completeKeyAgreement(remoteJwk: JsonWebKey) {
+    try {
+      if (!this.ecdhKeyPair) {
+        throw new Error('Local key pair not generated yet');
+      }
+      this.remotePublicKeyJwk = remoteJwk;
+      
+      const remotePublicKey = await importPublicKey(remoteJwk);
+      const roomId = useChatStore.getState().roomId;
+      
+      this.aesKey = await deriveAESGCMKey(
+        this.ecdhKeyPair.privateKey,
+        remotePublicKey,
+        this.myId,
+        this.peerId,
+        roomId
+      );
+
+      // Derive Safety Number
+      const localJwk = await exportPublicKey(this.ecdhKeyPair.publicKey);
+      this.e2eeSafetyNumber = await deriveSafetyNumber(localJwk, remoteJwk);
+      
+      this.e2eeStatus = 'established';
+      this.onIceLog(`[E2EE] Key agreement established. Safety number: ${this.e2eeSafetyNumber}`);
+      
+      // Update UI peer details in store
+      useChatStore.getState().updatePeer(this.peerId, {
+        e2eeStatus: 'established',
+        e2eeSafetyNumber: this.e2eeSafetyNumber
+      });
+
+      // Dispatch queued pending messages
+      const msgs = [...this.pendingOutgoingMessages];
+      this.pendingOutgoingMessages = [];
+      for (const m of msgs) {
+        await this.sendMessageEncrypted(m);
+      }
+
+      this.onDataChannelOpen?.(); // Notify that channel is open and encrypted!
+    } catch (err) {
+      console.error('[Pulsar E2EE] Key agreement derivation failure:', err);
+      this.e2eeStatus = 'failed';
+      useChatStore.getState().updatePeer(this.peerId, {
+        e2eeStatus: 'failed'
+      });
+    }
+  }
+
+  private sendPlaintextMessage(msg: DataChannelMessage) {
+    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
+      console.warn('Data channel is not open, cannot send plaintext message');
+      return;
+    }
+    const raw = JSON.stringify(msg);
+    this.dataChannel.send(raw);
+    this.messageCount++;
+    this.bytesSentAccumulator += raw.length;
+  }
+
+  private async sendMessageEncrypted(msg: DataChannelMessage) {
+    if (!this.dataChannel || this.dataChannel.readyState !== 'open' || !this.aesKey) {
+      return;
+    }
+    try {
+      const rawPlaintext = JSON.stringify(msg);
+      const { iv, ciphertext } = await encryptMessage(this.aesKey, rawPlaintext);
+      const frame = encodeEncryptedControlFrame(iv, ciphertext);
+      
+      this.dataChannel.send(frame);
+      this.messageCount++;
+      this.e2eeMessagesEncrypted++;
+      this.bytesSentAccumulator += frame.byteLength;
+    } catch (err) {
+      console.error('[Pulsar E2EE] Error encrypting control message:', err);
+      throw err;
+    }
   }
 
   /**
@@ -342,14 +539,21 @@ export class PulsarPeer {
    * Send JSON text payload over data channel
    */
   sendMessage(msg: DataChannelMessage) {
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      console.warn('Data channel is not open, cannot send message');
+    if (msg.type === 'key-exchange') {
+      this.sendPlaintextMessage(msg);
       return;
     }
-    const raw = JSON.stringify(msg);
-    this.dataChannel.send(raw);
-    this.messageCount++;
-    this.bytesSentAccumulator += raw.length;
+
+    if (this.e2eeStatus === 'established' && this.aesKey) {
+      this.sendMessageEncrypted(msg).catch((err) => {
+        console.error('[Pulsar E2EE] Encryption failed for outbound message:', err);
+      });
+    } else {
+      if (msg.type !== 'typing') {
+        this.onIceLog(`[E2EE Queue] Deferring outgoing message: E2EE not ready yet`);
+        this.pendingOutgoingMessages.push(msg);
+      }
+    }
   }
 
   /**
@@ -389,7 +593,8 @@ export class PulsarPeer {
         onProgress(progress);
       },
       isCancelled,
-      checkBackpressure
+      checkBackpressure,
+      this.aesKey || undefined
     );
   }
 
@@ -454,6 +659,11 @@ export class PulsarPeer {
       remoteCandidateType,
       turnUsed,
       turnCandidatesGathered,
+      e2eeStatus: this.e2eeStatus,
+      e2eeSafetyNumber: this.e2eeSafetyNumber,
+      e2eeMessagesEncrypted: this.e2eeMessagesEncrypted,
+      e2eeMessagesDecrypted: this.e2eeMessagesDecrypted,
+      e2eeDecryptionFailures: this.e2eeDecryptionFailures,
     };
   }
 
@@ -479,6 +689,9 @@ export class PulsarPeer {
     try {
       this.peerConnection.close();
     } catch {}
+
+    this.aesKey = null;
+    this.ecdhKeyPair = null;
   }
 }
 

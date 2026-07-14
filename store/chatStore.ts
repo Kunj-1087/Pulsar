@@ -14,7 +14,7 @@ interface ChatStore {
   messages: Message[];
   setMessages: (messages: Message[]) => void;
   addMessage: (msg: Message) => void;
-  updateFileProgress: (fileId: string, progress: number, status?: 'sending' | 'receiving' | 'complete' | 'error') => void;
+  updateFileProgress: (fileId: string, progress: number, status?: 'sending' | 'receiving' | 'complete' | 'error' | 'cancelled') => void;
   markFileComplete: (fileId: string, blob: Blob) => void;
   
   roomStatus: RoomConnectionStatus;

@@ -2,10 +2,20 @@
 // '0', 'O' (zero and capital O)
 // '1', 'I', 'L' (one, capital I, capital L)
 const CHARS = 'ABCDEFGHJKMNPQRSTVWXYZ23456789';
-const CODE_LENGTH = 6;
 
 /**
- * Generates a unique 6-character alphanumeric room code.
+ * Increased CODE_LENGTH from 6 to 8.
+ * Entropy Calculation:
+ * - Character Set Size (N) = 30
+ * - Length (L) = 8
+ * - Total Unique Combinations = N^L = 30^8 = 656,100,000,000 (656 billion combinations).
+ * This significantly prevents brute-force room enumeration attacks while retaining
+ * case-insensitive, user-friendly room codes.
+ */
+const CODE_LENGTH = 8;
+
+/**
+ * Generates a unique 8-character alphanumeric room code.
  */
 export function generateRoomCode(): string {
   let code = '';
@@ -31,7 +41,7 @@ export function generateRoomCode(): string {
 }
 
 /**
- * Validates whether a code format is correct (6 characters, only allowed alphanumeric characters).
+ * Validates whether a code format is correct (8 characters, only allowed alphanumeric characters).
  */
 export function isValidRoomCode(code: string): boolean {
   if (!code || code.length !== CODE_LENGTH) {

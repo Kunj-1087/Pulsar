@@ -276,6 +276,45 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
                     {connectionStats?.channelState?.toUpperCase() || 'CLOSED'}
                   </span>
                 </div>
+                <div className="flex justify-between border-t border-border-default/30 pt-1.5 mt-1.5">
+                  <span className="text-text-muted">E2EE Status:</span>
+                  <span
+                    className={cn(
+                      "font-bold",
+                      connectionStats?.e2eeStatus === 'established' && "text-status-green",
+                      connectionStats?.e2eeStatus === 'pending' && "text-status-yellow animate-pulse",
+                      connectionStats?.e2eeStatus === 'failed' && "text-status-red"
+                    )}
+                  >
+                    {connectionStats?.e2eeStatus?.toUpperCase() || 'PENDING'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-muted">Safety Number:</span>
+                  <span className="text-text-bright font-bold select-all tracking-wider">
+                    {connectionStats?.e2eeSafetyNumber || 'None'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-muted">Key Derivation:</span>
+                  <span className="text-text-muted text-[10px] truncate max-w-[150px]" title="ECDH P-256 → HKDF SHA-256 → AES-GCM 256">
+                    ECDH P-256 → HKDF → AES-256-GCM
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-muted">E2EE Encrypted:</span>
+                  <span className="text-text-bright">{connectionStats?.e2eeMessagesEncrypted ?? 0} msgs</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-muted">E2EE Decrypted:</span>
+                  <span className="text-text-bright">{connectionStats?.e2eeMessagesDecrypted ?? 0} msgs</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-muted">E2EE Decrypt Failures:</span>
+                  <span className={cn((connectionStats?.e2eeDecryptionFailures ?? 0) > 0 ? "text-status-red font-bold" : "text-text-bright")}>
+                    {connectionStats?.e2eeDecryptionFailures ?? 0}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
