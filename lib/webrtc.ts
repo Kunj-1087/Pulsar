@@ -1,5 +1,6 @@
 import { DataChannelMessage, SignalingMessage, ConnectionStats, PeerConnectionState } from '../types';
 import { sendFile } from './fileTransfer';
+import { useChatStore } from '../store/chatStore';
 
 export class PulsarPeer {
   peerConnection!: RTCPeerConnection;
@@ -12,13 +13,21 @@ export class PulsarPeer {
   
   public onIceCandidate?: (candidate: RTCIceCandidateInit) => void;
   public onMessage?: (msg: DataChannelMessage) => void;
+  public onBinaryMessage?: (arrayBuffer: ArrayBuffer) => void;
   public onConnectionStateChange?: (state: PeerConnectionState) => void;
   public onDataChannelOpen?: () => void;
   public onIceLog: (log: string) => void;
+  public onIceRestartRequired?: () => void;
   
   private messageCount = 0;
   private bytesSentAccumulator = 0;
   private bytesReceivedAccumulator = 0;
+  
+  private hasAttemptedIceRestart = false;
+  private iceRestartTimer: NodeJS.Timeout | null = null;
+
+  private resumeResolve: (() => void) | null = null;
+  private resumeReject: ((err: Error) => void) | null = null;
 
   constructor(config: {
     peerId: string;
@@ -26,7 +35,7 @@ export class PulsarPeer {
     isInitiator: boolean;
     onIceCandidate?: (candidate: RTCIceCandidateInit) => void;
     onMessage?: (msg: DataChannelMessage) => void;
-    onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
+    onConnectionStateChange?: (state: PeerConnectionState) => void;
     onDataChannelOpen?: () => void;
     onIceLog: (log: string) => void;
   }) {
@@ -48,20 +57,61 @@ export class PulsarPeer {
   private initialize() {
     console.log(`[Pulsar WebRTC] Creating RTCPeerConnection for peer: ${this.peerId}`);
     
-    this.peerConnection = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-      ],
+    // Dynamic ICE servers compilation
+    const iceServers: RTCIceServer[] = [];
+    
+    // 1. Add STUN
+    const stunServerEnv = process.env.NEXT_PUBLIC_STUN_SERVER || 'stun:stun.l.google.com:19302';
+    stunServerEnv.split(',').forEach((url) => {
+      if (url.trim()) {
+        iceServers.push({ urls: url.trim() });
+      }
     });
 
+    // 2. Add TURN
+    const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+    const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
+    const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+
+    if (turnUrl && turnUsername && turnCredential) {
+      turnUrl.split(',').forEach((url) => {
+        if (url.trim()) {
+          iceServers.push({
+            urls: url.trim(),
+            username: turnUsername,
+            credential: turnCredential,
+          });
+        }
+      });
+      console.log(`[Pulsar WebRTC] TURN relay configured successfully for peer: ${this.peerId}`);
+    } else if (turnUrl || turnUsername || turnCredential) {
+      console.warn(`[Pulsar WebRTC] Incomplete TURN configuration for peer ${this.peerId}. URL, username, and credentials must all be present.`);
+    }
+
+    const config: RTCConfiguration = {
+      iceServers,
+      iceCandidatePoolSize: 2, // Pre-gather candidates to minimize signaling latency
+    };
+
+    if (process.env.NEXT_PUBLIC_FORCE_RELAY === 'true') {
+      console.log(`[Pulsar WebRTC] Forcing "relay" transport policy for peer ${this.peerId}`);
+      config.iceTransportPolicy = 'relay';
+    }
+
+    this.peerConnection = new RTCPeerConnection(config);
     this.onIceLog(`[Init] Peer connection created for ${this.peerId}.`);
 
     // Gather ICE candidates
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log(`[Pulsar WebRTC] Gathered local ICE candidate for peer ${this.peerId}:`, event.candidate.candidate);
-        this.onIceLog(`[ICE] Local candidate gathered: ${event.candidate.candidate}`);
+        const candStr = event.candidate.candidate;
+        let type = 'unknown';
+        const match = candStr.match(/typ\s+(\w+)/);
+        if (match) {
+          type = match[1];
+        }
+        console.log(`[Pulsar WebRTC] Gathered local ICE candidate (${type}) for peer ${this.peerId}:`, candStr);
+        this.onIceLog(`[ICE] Local candidate gathered: type=${type}`);
         this.onIceCandidate?.(event.candidate.toJSON());
       }
     };
@@ -84,7 +134,12 @@ export class PulsarPeer {
     };
 
     this.peerConnection.oniceconnectionstatechange = () => {
-      this.onIceLog(`[ICE State] ICE connection state: ${this.peerConnection.iceConnectionState}`);
+      const iceState = this.peerConnection.iceConnectionState;
+      this.onIceLog(`[ICE State] ICE connection state: ${iceState}`);
+      
+      if (iceState === 'failed') {
+        this.handleIceFailure();
+      }
     };
 
     // Data Channel Setup
@@ -105,10 +160,36 @@ export class PulsarPeer {
     }
   }
 
+  private async handleIceFailure() {
+    if (this.hasAttemptedIceRestart) {
+      this.onIceLog('[ICE Restart] Already attempted ICE restart. Declaring connection failed.');
+      this.onConnectionStateChange?.('failed');
+      return;
+    }
+    
+    this.hasAttemptedIceRestart = true;
+    
+    if (this.isInitiator) {
+      this.onIceLog('[ICE Restart] ICE connection failed. Initiating ICE restart offer...');
+      this.onIceRestartRequired?.();
+    } else {
+      this.onIceLog('[ICE Restart] ICE connection failed. Waiting for initiator to restart ICE...');
+      this.iceRestartTimer = setTimeout(() => {
+        if (this.peerConnection.iceConnectionState === 'failed') {
+          this.onIceLog('[ICE Restart] Initiator failed to restart ICE within 10s. Declaring failed.');
+          this.onConnectionStateChange?.('failed');
+        }
+      }, 10000);
+    }
+  }
+
   /**
    * Setup data channel open/close/message events
    */
   private setupDataChannelHandlers(channel: RTCDataChannel) {
+    channel.binaryType = 'arraybuffer'; // Set binaryType for binary chunk frame reception
+    channel.bufferedAmountLowThreshold = 65536; // 64KB backpressure trigger threshold
+
     channel.onopen = () => {
       console.log(`[Pulsar WebRTC] DataChannel '${channel.label}' is OPEN for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Data channel is OPEN`);
@@ -119,12 +200,31 @@ export class PulsarPeer {
     channel.onclose = () => {
       console.log(`[Pulsar WebRTC] DataChannel '${channel.label}' is CLOSED for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Data channel is CLOSED`);
+      if (this.resumeReject) {
+        this.resumeReject(new Error('Data channel closed'));
+        this.resumeResolve = null;
+        this.resumeReject = null;
+      }
       this.onConnectionStateChange?.('disconnected');
     };
 
     channel.onerror = (error) => {
       console.error(`[Pulsar WebRTC] DataChannel '${channel.label}' Error for peer ${this.peerId}:`, error);
       this.onIceLog(`[DataChannel Error] ${JSON.stringify(error)}`);
+      if (this.resumeReject) {
+        this.resumeReject(new Error('Data channel error'));
+        this.resumeResolve = null;
+        this.resumeReject = null;
+      }
+    };
+
+    channel.onbufferedamountlow = () => {
+      if (this.resumeResolve) {
+        this.onIceLog(`[Backpressure] Buffered amount low, resolving pause promise`);
+        this.resumeResolve();
+        this.resumeResolve = null;
+        this.resumeReject = null;
+      }
     };
 
     channel.onmessage = (event) => {
@@ -139,6 +239,7 @@ export class PulsarPeer {
           this.onMessage?.(msg);
         } else if (rawData instanceof ArrayBuffer) {
           this.bytesReceivedAccumulator += rawData.byteLength;
+          this.onBinaryMessage?.(rawData);
         }
       } catch (err) {
         console.error('Failed to parse DataChannel message:', err);
@@ -149,9 +250,9 @@ export class PulsarPeer {
   /**
    * Creates SDP Offer.
    */
-  async createOffer(): Promise<RTCSessionDescriptionInit> {
-    this.onIceLog(`[SDP] Creating offer...`);
-    const offer = await this.peerConnection.createOffer();
+  async createOffer(options?: RTCOfferOptions): Promise<RTCSessionDescriptionInit> {
+    this.onIceLog(`[SDP] Creating offer${options?.iceRestart ? ' (ICE Restart)' : ''}...`);
+    const offer = await this.peerConnection.createOffer(options);
     await this.peerConnection.setLocalDescription(offer);
     this.onIceLog(`[SDP] Local description set (offer)`);
     return offer;
@@ -163,6 +264,10 @@ export class PulsarPeer {
   async handleOffer(sdp: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
     console.log(`[Pulsar WebRTC] Handling incoming offer from peer ${this.peerId}. State: ${this.peerConnection.signalingState}`);
     this.onIceLog(`[SDP] Handling incoming offer...`);
+    if (this.iceRestartTimer) {
+      clearTimeout(this.iceRestartTimer);
+      this.iceRestartTimer = null;
+    }
     if (this.peerConnection.signalingState !== 'stable' && this.peerConnection.signalingState !== 'have-local-offer') {
       console.warn(`[Pulsar WebRTC] Ignoring offer because signaling state is: ${this.peerConnection.signalingState}`);
       return this.peerConnection.localDescription || { type: 'answer', sdp: '' };
@@ -250,18 +355,42 @@ export class PulsarPeer {
   /**
    * Sends file binary buffer.
    */
-  async sendFile(fileId: string, file: File, senderName: string, onProgress: (pct: number) => void): Promise<void> {
+  async sendFile(
+    fileId: string,
+    file: File,
+    senderName: string,
+    onProgress: (pct: number) => void,
+    isCancelled: () => boolean
+  ): Promise<void> {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
       throw new Error('Data channel not open');
     }
+
+    const checkBackpressure = () => {
+      // Pause if output buffer exceeds 256KB High Watermark
+      if (this.dataChannel && this.dataChannel.bufferedAmount > 262144) {
+        return new Promise<void>((resolve, reject) => {
+          this.resumeResolve = resolve;
+          this.resumeReject = reject;
+        });
+      }
+      return Promise.resolve();
+    };
     
     const initialBytesSent = this.bytesSentAccumulator;
-    await sendFile(this.dataChannel, fileId, file, senderName, (progress) => {
-      // Approximate bytes sent during chunk transfers
-      const approxBytes = Math.round((file.size * progress) / 100);
-      this.bytesSentAccumulator = initialBytesSent + approxBytes;
-      onProgress(progress);
-    });
+    await sendFile(
+      this.dataChannel,
+      fileId,
+      file,
+      senderName,
+      (progress) => {
+        const approxBytes = Math.round((file.size * progress) / 100);
+        this.bytesSentAccumulator = initialBytesSent + approxBytes;
+        onProgress(progress);
+      },
+      isCancelled,
+      checkBackpressure
+    );
   }
 
   /**
@@ -272,6 +401,10 @@ export class PulsarPeer {
     let bytesReceived = this.bytesReceivedAccumulator;
     let latencyMs: number | null = null;
     let connectionType = 'unknown';
+    let localCandidateType = 'unknown';
+    let remoteCandidateType = 'unknown';
+    let turnUsed = false;
+    let turnCandidatesGathered = false;
 
     try {
       const statsReport = await this.peerConnection.getStats();
@@ -281,13 +414,27 @@ export class PulsarPeer {
           bytesSent = report.bytesSent || bytesSent;
           bytesReceived = report.bytesReceived || bytesReceived;
         }
+        if (report.type === 'local-candidate') {
+          if (report.candidateType === 'relay') {
+            turnCandidatesGathered = true;
+          }
+        }
         if (report.type === 'candidate-pair' && report.state === 'succeeded') {
           if (report.currentRoundTripTime !== undefined) {
             latencyMs = Math.round(report.currentRoundTripTime * 1000);
           }
-          const remoteCandidate = statsReport.get(report.remoteCandidateId);
-          if (remoteCandidate) {
-            connectionType = remoteCandidate.candidateType || 'unknown';
+          const localCand = statsReport.get(report.localCandidateId);
+          const remoteCand = statsReport.get(report.remoteCandidateId);
+          
+          if (localCand) {
+            localCandidateType = localCand.candidateType || 'unknown';
+            if (localCand.candidateType === 'relay') {
+              turnUsed = true;
+            }
+          }
+          if (remoteCand) {
+            remoteCandidateType = remoteCand.candidateType || 'unknown';
+            connectionType = remoteCand.candidateType || 'unknown';
           }
         }
       });
@@ -303,6 +450,10 @@ export class PulsarPeer {
       connectionType,
       iceState: this.peerConnection.iceConnectionState,
       channelState: this.dataChannel ? this.dataChannel.readyState : 'closed',
+      localCandidateType,
+      remoteCandidateType,
+      turnUsed,
+      turnCandidatesGathered,
     };
   }
 
@@ -311,6 +462,15 @@ export class PulsarPeer {
    */
   close() {
     this.onIceLog(`[Cleanup] Closing peer connection...`);
+    if (this.iceRestartTimer) {
+      clearTimeout(this.iceRestartTimer);
+      this.iceRestartTimer = null;
+    }
+    if (this.resumeReject) {
+      this.resumeReject(new Error('Peer connection closed'));
+      this.resumeResolve = null;
+      this.resumeReject = null;
+    }
     if (this.dataChannel) {
       try {
         this.dataChannel.close();
@@ -328,6 +488,7 @@ export class PulsarRoom {
   private myId: string;
   private onSignal: (msg: SignalingMessage) => void;
   private onPeerMessage: (peerId: string, msg: DataChannelMessage) => void;
+  private onPeerBinaryMessage: (peerId: string, msg: ArrayBuffer) => void;
   private onPeerStateChange: (peerId: string, state: PeerConnectionState) => void;
   private onIceLog: (entry: string) => void;
 
@@ -335,12 +496,14 @@ export class PulsarRoom {
     myId: string;
     onSignal: (msg: SignalingMessage) => void;
     onPeerMessage: (peerId: string, msg: DataChannelMessage) => void;
+    onPeerBinaryMessage: (peerId: string, msg: ArrayBuffer) => void;
     onPeerStateChange: (peerId: string, state: PeerConnectionState) => void;
     onIceLog: (entry: string) => void;
   }) {
     this.myId = config.myId;
     this.onSignal = config.onSignal;
     this.onPeerMessage = config.onPeerMessage;
+    this.onPeerBinaryMessage = config.onPeerBinaryMessage;
     this.onPeerStateChange = config.onPeerStateChange;
     this.onIceLog = config.onIceLog;
   }
@@ -369,6 +532,29 @@ export class PulsarRoom {
       onConnectionStateChange: (state) => this.onPeerStateChange(peerId, state),
       onIceLog: (log) => this.onIceLog(`[Peer:${peerId}] ${log}`),
     });
+
+    peer.onBinaryMessage = (arrayBuffer) => this.onPeerBinaryMessage(peerId, arrayBuffer);
+
+    peer.onIceRestartRequired = async () => {
+      const roomStatus = useChatStore.getState().roomStatus;
+      if (roomStatus === 'reconnecting' || roomStatus === 'failed') {
+        this.onIceLog(`[Peer:${peerId}] [ICE Restart] Signaling not stable (status: ${roomStatus}). Deferring ICE restart.`);
+        return;
+      }
+
+      try {
+        this.onIceLog(`[Peer:${peerId}] [ICE Restart] Initiating ICE restart offer`);
+        const offer = await peer.createOffer({ iceRestart: true });
+        this.onSignal({
+          type: 'offer',
+          sdp: offer,
+          fromPeer: this.myId,
+          toPeer: peerId,
+        });
+      } catch (err) {
+        console.error(`[ICE Restart] Failed to create restart offer for peer ${peerId}:`, err);
+      }
+    };
 
     this.peers.set(peerId, peer);
 

@@ -1,37 +1,109 @@
 import { DataChannelMessage } from '../types';
 
-const CHUNK_SIZE = Number(process.env.NEXT_PUBLIC_CHUNK_SIZE_BYTES) || 16384; // 16KB default
-const BUFFER_THRESHOLD = 1024 * 1024; // 1MB threshold for flow control
+export const HEADER_SIZE = 47;
 
-/**
- * Converts an ArrayBuffer to a Base64 string.
- */
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  let binary = '';
-  const bytes = new Uint8Array(buffer);
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+export interface BinaryFrame {
+  transferId: string;
+  chunkIndex: number;
+  chunkData: Uint8Array;
 }
 
 /**
- * Sends a file over an RTCDataChannel in chunks with backpressure handling.
+ * Encodes a chunk data payload into a binary frame with a 47-byte header.
+ * Byte Layout:
+ * - Bytes 0-1 (2 bytes): Magic byte 0x50 ('P') and Version byte 0x01
+ * - Byte 2 (1 byte): Frame-type byte (0x00 = Chunk Data)
+ * - Bytes 3-38 (36 bytes): Transfer ID (ASCII string of UUID, null-padded)
+ * - Bytes 39-42 (4 bytes): Chunk Index (32-bit big-endian unsigned integer)
+ * - Bytes 43-46 (4 bytes): Chunk Length (32-bit big-endian unsigned integer)
+ * - Bytes 47+: Raw chunk bytes
+ */
+export function encodeBinaryFrame(transferId: string, chunkIndex: number, chunkData: ArrayBuffer): ArrayBuffer {
+  const transferIdBytes = new TextEncoder().encode(transferId);
+  const headerBuffer = new ArrayBuffer(HEADER_SIZE + chunkData.byteLength);
+  const headerView = new DataView(headerBuffer);
+  const uint8View = new Uint8Array(headerBuffer);
+
+  headerView.setUint8(0, 0x50); // Magic 'P'
+  headerView.setUint8(1, 0x01); // Version 1
+  headerView.setUint8(2, 0x00); // Frame-type (Chunk Data)
+
+  // Write transfer ID (up to 36 bytes) starting at byte index 3
+  const writeLen = Math.min(transferIdBytes.length, 36);
+  uint8View.set(transferIdBytes.subarray(0, writeLen), 3);
+
+  headerView.setUint32(39, chunkIndex, false); // Big-endian
+  headerView.setUint32(43, chunkData.byteLength, false); // Big-endian
+
+  uint8View.set(new Uint8Array(chunkData), HEADER_SIZE);
+  return headerBuffer;
+}
+
+/**
+ * Decodes a binary frame, returning the transferId, chunkIndex, and chunkData view.
+ */
+export function decodeBinaryFrame(arrayBuffer: ArrayBuffer): BinaryFrame {
+  if (arrayBuffer.byteLength < HEADER_SIZE) {
+    throw new Error('[Pulsar FileTransfer] Binary frame is too small');
+  }
+
+  const view = new DataView(arrayBuffer);
+  const magic = view.getUint8(0);
+  const version = view.getUint8(1);
+  const type = view.getUint8(2);
+
+  if (magic !== 0x50 || version !== 0x01) {
+    throw new Error(`[Pulsar FileTransfer] Invalid magic (0x${magic.toString(16)}) or version (${version})`);
+  }
+  if (type !== 0x00) {
+    throw new Error(`[Pulsar FileTransfer] Unsupported frame type: 0x${type.toString(16)}`);
+  }
+
+  // Extract transferId (bytes 3 to 38)
+  const transferIdBytes = new Uint8Array(arrayBuffer, 3, 36);
+  let transferId = new TextDecoder().decode(transferIdBytes);
+  const nullIdx = transferId.indexOf('\0');
+  if (nullIdx !== -1) {
+    transferId = transferId.substring(0, nullIdx);
+  }
+  transferId = transferId.trim().replace(/\0/g, '');
+
+  const chunkIndex = view.getUint32(39, false); // Big-endian
+  const chunkLength = view.getUint32(43, false); // Big-endian
+
+  if (HEADER_SIZE + chunkLength !== arrayBuffer.byteLength) {
+    throw new Error(`[Pulsar FileTransfer] Frame payload size mismatch. Expected ${chunkLength}, buffer has ${arrayBuffer.byteLength - HEADER_SIZE}`);
+  }
+
+  // Slice a view over the existing buffer to prevent memory duplication
+  const chunkData = new Uint8Array(arrayBuffer, HEADER_SIZE, chunkLength);
+  return { transferId, chunkIndex, chunkData };
+}
+
+/**
+ * Sends a file over an RTCDataChannel in chunks using the binary protocol.
  */
 export async function sendFile(
   channel: RTCDataChannel,
   fileId: string,
   file: File,
   senderName: string,
-  onProgress: (progress: number) => void
+  onProgress: (progress: number) => void,
+  isCancelled: () => boolean,
+  checkBackpressure: () => Promise<void>
 ): Promise<void> {
-  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-  
-  // Set the threshold for bufferedamountlow event
-  channel.bufferedAmountLowThreshold = 65536; // 64KB
+  const rawChunkSize = Number(process.env.NEXT_PUBLIC_CHUNK_SIZE_BYTES) || 16384;
+  const CLAMP_MIN = 1024;
+  const CLAMP_MAX = 65536; // 64KB safe upper bound
+  const CHUNK_SIZE = Math.min(Math.max(rawChunkSize, CLAMP_MIN), CLAMP_MAX);
 
-  // 1. Send file metadata
+  if (rawChunkSize < CLAMP_MIN || rawChunkSize > CLAMP_MAX) {
+    console.warn(`[Pulsar FileTransfer] Configured chunk size ${rawChunkSize} is out of safe bounds. Clamped to ${CHUNK_SIZE}.`);
+  }
+
+  const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+
+  // 1. Send file metadata (JSON control string)
   const metaMsg: DataChannelMessage = {
     type: 'file-meta',
     id: fileId,
@@ -66,37 +138,27 @@ export async function sendFile(
   };
 
   for (chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
-    // Flow control: if the channel's output buffer is full, wait for it to clear
-    if (channel.bufferedAmount > BUFFER_THRESHOLD) {
-      await new Promise<void>((resolve) => {
-        const handleLow = () => {
-          channel.removeEventListener('bufferedamountlow', handleLow);
-          resolve();
-        };
-        channel.addEventListener('bufferedamountlow', handleLow);
-      });
+    // Check cancellation signal
+    if (isCancelled()) {
+      throw new Error('Transfer cancelled');
     }
+
+    // Await backpressure resolution if output buffer is full
+    await checkBackpressure();
 
     try {
       const arrayBuffer = await readNextChunk();
-      const base64Chunk = arrayBufferToBase64(arrayBuffer);
+      const frame = encodeBinaryFrame(fileId, chunkIndex, arrayBuffer);
       
-      const chunkMsg: DataChannelMessage = {
-        type: 'file-chunk',
-        id: fileId,
-        chunk: base64Chunk,
-        index: chunkIndex,
-      };
-      
-      channel.send(JSON.stringify(chunkMsg));
+      channel.send(frame);
       onProgress(Math.round(((chunkIndex + 1) / totalChunks) * 100));
     } catch (err) {
-      console.error(`Error sending chunk ${chunkIndex} of file ${file.name}:`, err);
+      console.error(`[Pulsar FileTransfer] Error sending chunk ${chunkIndex} of file ${file.name}:`, err);
       throw err;
     }
   }
 
-  // 3. Send file complete message
+  // 3. Send file complete message (JSON control string)
   const completeMsg: DataChannelMessage = {
     type: 'file-complete',
     id: fileId,
@@ -113,7 +175,7 @@ export class FileReceiver {
   size: number;
   mimeType: string;
   totalChunks: number;
-  chunks: string[];
+  chunks: Uint8Array[];
   receivedChunksCount: number;
 
   constructor(id: string, name: string, size: number, mimeType: string, totalChunks: number) {
@@ -127,11 +189,11 @@ export class FileReceiver {
   }
 
   /**
-   * Stores an incoming base64 chunk.
+   * Stores an incoming binary chunk.
    */
-  receiveChunk(index: number, base64Chunk: string): void {
+  receiveChunk(index: number, chunkBytes: Uint8Array): void {
     if (index >= 0 && index < this.totalChunks && !this.chunks[index]) {
-      this.chunks[index] = base64Chunk;
+      this.chunks[index] = chunkBytes;
       this.receivedChunksCount++;
     }
   }
@@ -152,22 +214,14 @@ export class FileReceiver {
   }
 
   /**
-   * Compiles the stored base64 chunks into a single Blob.
+   * Compiles the stored binary chunks into a single Blob.
    */
   assemble(): Blob {
-    const byteArrays = this.chunks.map((base64, idx) => {
-      if (base64 === undefined) {
-        throw new Error(`Cannot assemble: missing chunk index ${idx}`);
+    for (let i = 0; i < this.totalChunks; i++) {
+      if (this.chunks[i] === undefined) {
+        throw new Error(`[Pulsar FileTransfer] Cannot assemble: missing chunk index ${i}`);
       }
-      const binaryString = atob(base64);
-      const len = binaryString.length;
-      const bytes = new Uint8Array(len);
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return bytes;
-    });
-    
-    return new Blob(byteArrays, { type: this.mimeType });
+    }
+    return new Blob(this.chunks, { type: this.mimeType });
   }
 }

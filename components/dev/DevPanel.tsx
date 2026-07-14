@@ -243,6 +243,26 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
                   <span className="text-text-bright capitalize">{connectionStats?.connectionType || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
+                  <span className="text-text-muted">Local Candidate:</span>
+                  <span className="text-text-bright capitalize">{connectionStats?.localCandidateType || 'Unknown'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-muted">Remote Candidate:</span>
+                  <span className="text-text-bright capitalize">{connectionStats?.remoteCandidateType || 'Unknown'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-muted">TURN Candidates:</span>
+                  <span className={cn(connectionStats?.turnCandidatesGathered ? "text-status-green font-bold" : "text-text-muted")}>
+                    {connectionStats?.turnCandidatesGathered ? 'GATHERED' : 'NONE'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-text-muted">TURN Relaying:</span>
+                  <span className={cn(connectionStats?.turnUsed ? "text-status-yellow font-bold" : "text-text-muted")}>
+                    {connectionStats?.turnUsed ? 'ACTIVE' : 'INACTIVE'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-text-muted">Data Channel:</span>
                   <span
                     className={cn(

@@ -1,4 +1,4 @@
-export type MessageType = 'text' | 'file-meta' | 'file-chunk' | 'file-complete' | 'typing' | 'peer-info' | 'system';
+export type MessageType = 'text' | 'file-meta' | 'file-complete' | 'file-cancel' | 'typing' | 'peer-info' | 'system';
 
 export interface Message {
   id: string;
@@ -19,7 +19,7 @@ export interface FileRef {
   mimeType: string;
   blob?: Blob;             // only after receive complete
   progress?: number;       // 0–100 during transfer
-  status: 'sending' | 'receiving' | 'complete' | 'error';
+  status: 'sending' | 'receiving' | 'complete' | 'error' | 'cancelled';
 }
 
 export type RoomConnectionStatus = 'idle' | 'signaling' | 'connecting' | 'connected' | 'degraded' | 'reconnecting' | 'failed' | 'closing' | 'closed';
@@ -46,8 +46,8 @@ export interface Room {
 export type DataChannelMessage =
   | { type: 'message'; id: string; text: string; sender: string; senderId: string; ts: number }
   | { type: 'file-meta'; id: string; name: string; size: number; mimeType: string; totalChunks: number; sender: string }
-  | { type: 'file-chunk'; id: string; chunk: string; index: number } // base64 encoded chunk
   | { type: 'file-complete'; id: string }
+  | { type: 'file-cancel'; id: string; reason?: string }
   | { type: 'typing'; senderId: string; displayName: string; isTyping: boolean }
   | { type: 'peer-info'; peerId: string; displayName: string; handle?: string; peerColor?: string };
 
@@ -71,4 +71,8 @@ export interface ConnectionStats {
   connectionType: string;
   iceState: RTCIceConnectionState;
   channelState: RTCDataChannelState;
+  localCandidateType?: string;
+  remoteCandidateType?: string;
+  turnUsed?: boolean;
+  turnCandidatesGathered?: boolean;
 }

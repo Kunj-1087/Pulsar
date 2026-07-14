@@ -5,7 +5,7 @@ import { generateId, cn } from '../../lib/utils';
 import { useChatStore } from '../../store/chatStore';
 import { PulsarSignaling } from '../../lib/signaling';
 import { PulsarRoom } from '../../lib/webrtc';
-import { FileReceiver } from '../../lib/fileTransfer';
+import { FileReceiver, decodeBinaryFrame } from '../../lib/fileTransfer';
 import { getMessages, saveMessage, saveFile, saveRoom } from '../../lib/storage';
 import { Message, SignalingMessage, DataChannelMessage } from '../../types';
 import { RoomHeader } from './RoomHeader';
@@ -56,6 +56,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const disconnectTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const typingTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const INCOMING_TYPING_TIMEOUT_MS = 5000;
+
+  const cancelledTransfersRef = useRef<Set<string>>(new Set());
 
   // Handle Ctrl+Shift+D / Cmd+Shift+D keyboard shortcuts for Dev Panel
   useEffect(() => {
@@ -175,6 +177,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         },
         onPeerMessage: (peerId, dataChanMsg) => {
           handleIncomingDataMessage(peerId, dataChanMsg);
+        },
+        onPeerBinaryMessage: (peerId, arrayBuffer) => {
+          handleIncomingBinaryMessage(peerId, arrayBuffer);
         },
         onPeerStateChange: (peerId, state) => {
           const oldPeer = store.peers.get(peerId);
@@ -362,12 +367,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
     const currentDisconnectTimers = disconnectTimersRef.current;
     const currentTypingTimers = typingTimersRef.current;
+    const currentReceiversMap = fileReceiversRef.current;
 
     // Unmount cleanup
     return () => {
       active = false;
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       
+      // Cancel all active transfers
+      const currentReceivers = Array.from(currentReceiversMap.keys());
+      currentReceivers.forEach((fileId) => {
+        handleCancelTransfer(fileId);
+      });
+
       // Clear and clean all timers
       currentDisconnectTimers.forEach((timer) => clearTimeout(timer));
       currentDisconnectTimers.clear();
@@ -580,14 +592,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         store.addMessage(fileMsgPlaceholder);
         break;
 
-      case 'file-chunk':
-        const rx = fileReceiversRef.current.get(msg.id);
-        if (rx) {
-          rx.receiveChunk(msg.index, msg.chunk);
-          store.updateFileProgress(msg.id, rx.getProgress());
-        }
-        break;
-
       case 'file-complete':
         const rxComp = fileReceiversRef.current.get(msg.id);
         if (rxComp && rxComp.isComplete()) {
@@ -612,10 +616,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             }
           } catch (err) {
             console.error('File assembly failure:', err);
-            store.updateFileProgress(msg.id, 0); // resets or marks error
+            store.updateFileProgress(msg.id, 0, 'error');
           } finally {
             fileReceiversRef.current.delete(msg.id);
           }
+        }
+        break;
+
+      case 'file-cancel':
+        fileReceiversRef.current.delete(msg.id);
+        store.updateFileProgress(msg.id, 0, 'cancelled');
+        const fileMsg = store.messages.find(m => m.id === msg.id);
+        if (fileMsg) {
+          await saveMessage({
+            ...fileMsg,
+            fileRef: {
+              ...fileMsg.fileRef!,
+              status: 'cancelled',
+              progress: 0,
+            }
+          });
         }
         break;
 
@@ -641,6 +661,62 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         break;
     }
   };
+
+  const handleIncomingBinaryMessage = async (peerId: string, arrayBuffer: ArrayBuffer) => {
+    try {
+      const { transferId, chunkIndex, chunkData } = decodeBinaryFrame(arrayBuffer);
+      if (cancelledTransfersRef.current.has(transferId)) {
+        return;
+      }
+      
+      const receiver = fileReceiversRef.current.get(transferId);
+      if (receiver) {
+        receiver.receiveChunk(chunkIndex, chunkData);
+        store.updateFileProgress(transferId, receiver.getProgress());
+      } else {
+        console.warn(`[Pulsar ChatWindow] Received binary chunk for unknown transfer: ${transferId}`);
+      }
+    } catch (err) {
+      console.error('[Pulsar ChatWindow] Failed to handle incoming binary message:', err);
+    }
+  };
+
+  const handleCancelTransfer = async (fileId: string) => {
+    console.log(`[Pulsar ChatWindow] Cancelling transfer: ${fileId}`);
+    cancelledTransfersRef.current.add(fileId);
+    fileReceiversRef.current.delete(fileId);
+    
+    roomRef.current?.broadcast({
+      type: 'file-cancel',
+      id: fileId,
+    });
+    
+    store.updateFileProgress(fileId, 0, 'cancelled');
+    
+    const targetMsg = useChatStore.getState().messages.find((m) => m.id === fileId);
+    if (targetMsg) {
+      await saveMessage({
+        ...targetMsg,
+        fileRef: {
+          ...targetMsg.fileRef!,
+          status: 'cancelled',
+          progress: 0,
+        },
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleCancelEvent = (e: Event) => {
+      const { fileId } = (e as CustomEvent).detail;
+      handleCancelTransfer(fileId);
+    };
+    window.addEventListener('pulsar-cancel-transfer', handleCancelEvent);
+    return () => {
+      window.removeEventListener('pulsar-cancel-transfer', handleCancelEvent);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Action dispatcher: Text Messages
   const handleSendMessage = async (text: string) => {
@@ -697,7 +773,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
     const activePeers = Array.from(roomRef.current?.peers.values() || []);
     if (activePeers.length === 0) {
-      store.updateFileProgress(fileId, 0);
+      store.updateFileProgress(fileId, 0, 'error');
       return;
     }
 
@@ -705,31 +781,52 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       // Send file to all peers (parallelized chunks over channel)
       await Promise.all(
         activePeers.map(peer =>
-          peer.sendFile(fileId, file, displayName, (progress) => {
-            store.updateFileProgress(fileId, progress);
-          })
+          peer.sendFile(
+            fileId,
+            file,
+            displayName,
+            (progress) => {
+              store.updateFileProgress(fileId, progress);
+            },
+            () => cancelledTransfersRef.current.has(fileId)
+          )
         )
       );
 
       // Save complete status local
-      await saveFile({
-        id: fileId,
-        name: file.name,
-        size: file.size,
-        mimeType: file.type || 'application/octet-stream',
-        blob: file,
-      });
+      if (!cancelledTransfersRef.current.has(fileId)) {
+        await saveFile({
+          id: fileId,
+          name: file.name,
+          size: file.size,
+          mimeType: file.type || 'application/octet-stream',
+          blob: file,
+        });
 
-      store.markFileComplete(fileId, file);
-      
-      const completedMsg = store.messages.find(m => m.id === fileId);
-      if (completedMsg) {
-        await saveMessage(completedMsg);
+        store.markFileComplete(fileId, file);
+        
+        const completedMsg = store.messages.find(m => m.id === fileId);
+        if (completedMsg) {
+          await saveMessage(completedMsg);
+        }
       }
     } catch (err) {
       console.error('Failed to send file:', err);
-      // Mark error
-      store.updateFileProgress(fileId, 0);
+      const isCancelled = cancelledTransfersRef.current.has(fileId);
+      const finalStatus = isCancelled ? 'cancelled' : 'error';
+      store.updateFileProgress(fileId, 0, finalStatus);
+      
+      const failedMsg = store.messages.find(m => m.id === fileId);
+      if (failedMsg) {
+        await saveMessage({
+          ...failedMsg,
+          fileRef: {
+            ...failedMsg.fileRef!,
+            status: finalStatus,
+            progress: 0,
+          }
+        });
+      }
     }
   };
 

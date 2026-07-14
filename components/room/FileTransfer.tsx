@@ -58,6 +58,12 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
     URL.revokeObjectURL(url);
   };
 
+  const handleCancel = () => {
+    window.dispatchEvent(new CustomEvent('pulsar-cancel-transfer', {
+      detail: { fileId: fileRef.id }
+    }));
+  };
+
   const isImage = mimeType.startsWith('image/');
 
   return (
@@ -116,7 +122,7 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
       {/* Sending/Receiving Progress Bar */}
       {(localStatus === 'sending' || localStatus === 'receiving') && (
         <div className="space-y-1.5 mt-2">
-          <div className="flex justify-between text-[9px] text-text-muted">
+          <div className="flex justify-between items-center text-[9px] text-text-muted">
             <span className="capitalize">{localStatus}...</span>
             <span>{localProgress}%</span>
           </div>
@@ -134,6 +140,14 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
               }}
             />
           </div>
+          <div className="flex justify-end mt-1">
+            <button
+              onClick={handleCancel}
+              className="text-[9px] text-status-red hover:underline hover:text-red-400 font-mono transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -142,6 +156,14 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
         <div className="flex items-center gap-1.5 text-status-red mt-2 py-1 px-2 border border-status-red/20 bg-status-red/10 rounded">
           <AlertTriangle className="w-3.5 h-3.5" />
           <span>Transfer failed</span>
+        </div>
+      )}
+
+      {/* Cancelled state */}
+      {status === 'cancelled' && (
+        <div className="flex items-center gap-1.5 text-status-yellow mt-2 py-1 px-2 border border-status-yellow/20 bg-status-yellow/10 rounded">
+          <AlertTriangle className="w-3.5 h-3.5" />
+          <span>Transfer cancelled</span>
         </div>
       )}
 
