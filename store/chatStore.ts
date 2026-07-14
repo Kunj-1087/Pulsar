@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Message, Peer, Room, ConnectionStats } from '../types';
+import { Message, Peer, Room, ConnectionStats, RoomConnectionStatus } from '../types';
 
 interface ChatStore {
   room: Room | null;
@@ -14,13 +14,11 @@ interface ChatStore {
   messages: Message[];
   setMessages: (messages: Message[]) => void;
   addMessage: (msg: Message) => void;
-  updateFileProgress: (fileId: string, progress: number) => void;
+  updateFileProgress: (fileId: string, progress: number, status?: 'sending' | 'receiving' | 'complete' | 'error') => void;
   markFileComplete: (fileId: string, blob: Blob) => void;
   
-  isConnecting: boolean;
-  setIsConnecting: (isConnecting: boolean) => void;
-  isConnected: boolean;
-  setIsConnected: (isConnected: boolean) => void;
+  roomStatus: RoomConnectionStatus;
+  setRoomStatus: (roomStatus: RoomConnectionStatus) => void;
   
   typingPeers: Set<string>;
   setTyping: (peerId: string, isTyping: boolean) => void;
@@ -50,13 +48,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const existing = next.get(peer.peerId);
     next.set(peer.peerId, {
       displayName: `Peer_${peer.peerId.substring(0, 4)}`,
-      connectionState: 'connecting',
+      connectionState: 'negotiating',
       isHost: false,
       ...existing,
       ...peer,
     });
-    const isConnected = Array.from(next.values()).some((p) => p.connectionState === 'connected');
-    return { peers: next, isConnected };
+    return { peers: next };
   }),
   updatePeer: (peerId, update) => set((state) => {
     const next = new Map(state.peers);
@@ -64,8 +61,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (existing) {
       next.set(peerId, { ...existing, ...update });
     }
-    const isConnected = Array.from(next.values()).some((p) => p.connectionState === 'connected');
-    return { peers: next, isConnected };
+    return { peers: next };
   }),
   removePeer: (peerId) => set((state) => {
     const next = new Map(state.peers);
@@ -75,8 +71,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const nextTyping = new Set(state.typingPeers);
     nextTyping.delete(peerId);
     
-    const isConnected = Array.from(next.values()).some((p) => p.connectionState === 'connected');
-    return { peers: next, typingPeers: nextTyping, isConnected };
+    return { peers: next, typingPeers: nextTyping };
   }),
   getPeerCount: () => {
     return get().peers.size;
@@ -91,7 +86,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
     return { messages: [...state.messages, msg] };
   }),
-  updateFileProgress: (fileId, progress) => set((state) => {
+  updateFileProgress: (fileId, progress, status) => set((state) => {
     return {
       messages: state.messages.map((msg) => {
         if (msg.type === 'file' && msg.fileRef && msg.fileRef.id === fileId) {
@@ -100,7 +95,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
             fileRef: {
               ...msg.fileRef,
               progress,
-              status: progress >= 100 ? 'complete' : msg.fileRef.status,
+              status: status || (progress >= 100 ? 'complete' : msg.fileRef.status),
             },
           };
         }
@@ -127,10 +122,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     };
   }),
   
-  isConnecting: false,
-  setIsConnecting: (isConnecting) => set({ isConnecting }),
-  isConnected: false,
-  setIsConnected: (isConnected) => set({ isConnected }),
+  roomStatus: 'idle',
+  setRoomStatus: (roomStatus) => set({ roomStatus }),
   
   typingPeers: new Set(),
   setTyping: (peerId, isTyping) => set((state) => {
@@ -165,8 +158,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     room: null,
     peers: new Map(),
     messages: [],
-    isConnecting: false,
-    isConnected: false,
+    roomStatus: 'idle',
     typingPeers: new Set(),
     connectionStats: null,
     iceLog: [],

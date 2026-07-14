@@ -229,7 +229,7 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
                       iceStateHighlight ? "text-text-bright duration-100" : "duration-300",
                       !iceStateHighlight && {
                         "text-status-green": activePeer?.connectionState === 'connected',
-                        "text-status-yellow": activePeer?.connectionState === 'connecting' || activePeer?.connectionState === 'new',
+                        "text-status-yellow": activePeer?.connectionState === 'negotiating' || activePeer?.connectionState === 'new',
                         "text-amber-600": !activePeer?.connectionState || activePeer?.connectionState === 'idle',
                         "text-status-red": ['failed', 'disconnected', 'closed'].includes(activePeer?.connectionState || ''),
                       }

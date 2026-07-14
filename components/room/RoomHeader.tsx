@@ -12,7 +12,7 @@ interface RoomHeaderProps {
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
-  const { peers, devModeEnabled, toggleDevMode, reset } = useChatStore();
+  const { peers, devModeEnabled, toggleDevMode, reset, setRoomStatus } = useChatStore();
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
@@ -32,9 +32,11 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
   }, []);
 
   const confirmReset = () => {
+    setRoomStatus('closing');
     localStorage.removeItem('pulsar_identity');
     localStorage.removeItem('pulsar-displayName');
     reset();
+    setRoomStatus('closed');
     window.location.href = '/';
   };
 

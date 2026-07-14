@@ -1,4 +1,4 @@
-import { DataChannelMessage, SignalingMessage, ConnectionStats } from '../types';
+import { DataChannelMessage, SignalingMessage, ConnectionStats, PeerConnectionState } from '../types';
 import { sendFile } from './fileTransfer';
 
 export class PulsarPeer {
@@ -12,7 +12,7 @@ export class PulsarPeer {
   
   public onIceCandidate?: (candidate: RTCIceCandidateInit) => void;
   public onMessage?: (msg: DataChannelMessage) => void;
-  public onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
+  public onConnectionStateChange?: (state: PeerConnectionState) => void;
   public onDataChannelOpen?: () => void;
   public onIceLog: (log: string) => void;
   
@@ -71,7 +71,16 @@ export class PulsarPeer {
       const state = this.peerConnection.connectionState;
       console.log(`[Pulsar WebRTC] Connection state changed for peer ${this.peerId} to: ${state}`);
       this.onIceLog(`[State] Connection state changed to: ${state}`);
-      this.onConnectionStateChange?.(state);
+      
+      let mappedState: PeerConnectionState = 'new';
+      if (state === 'new') mappedState = 'new';
+      else if (state === 'connecting') mappedState = 'negotiating';
+      else if (state === 'connected') mappedState = 'connected';
+      else if (state === 'disconnected') mappedState = 'disconnected';
+      else if (state === 'failed') mappedState = 'failed';
+      else if (state === 'closed') mappedState = 'closed';
+
+      this.onConnectionStateChange?.(mappedState);
     };
 
     this.peerConnection.oniceconnectionstatechange = () => {
@@ -319,14 +328,14 @@ export class PulsarRoom {
   private myId: string;
   private onSignal: (msg: SignalingMessage) => void;
   private onPeerMessage: (peerId: string, msg: DataChannelMessage) => void;
-  private onPeerStateChange: (peerId: string, state: RTCPeerConnectionState) => void;
+  private onPeerStateChange: (peerId: string, state: PeerConnectionState) => void;
   private onIceLog: (entry: string) => void;
 
   constructor(config: {
     myId: string;
     onSignal: (msg: SignalingMessage) => void;
     onPeerMessage: (peerId: string, msg: DataChannelMessage) => void;
-    onPeerStateChange: (peerId: string, state: RTCPeerConnectionState) => void;
+    onPeerStateChange: (peerId: string, state: PeerConnectionState) => void;
     onIceLog: (entry: string) => void;
   }) {
     this.myId = config.myId;

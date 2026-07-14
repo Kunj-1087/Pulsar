@@ -54,6 +54,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const fileReceiversRef = useRef<Map<string, FileReceiver>>(new Map());
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const disconnectTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const typingTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const INCOMING_TYPING_TIMEOUT_MS = 5000;
 
   // Handle Ctrl+Shift+D / Cmd+Shift+D keyboard shortcuts for Dev Panel
   useEffect(() => {
@@ -66,6 +68,48 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [store]);
+
+  // Helpers for file transfers and peer resource cleaning
+  const failFileTransfersForPeer = (peerId: string) => {
+    store.messages.forEach((msg) => {
+      if (msg.type === 'file' && msg.fileRef) {
+        if (!msg.isOwn && msg.senderId === peerId && msg.fileRef.status === 'receiving') {
+          store.updateFileProgress(msg.id, msg.fileRef.progress || 0, 'error');
+        }
+      }
+    });
+  };
+
+  const failAllFileTransfers = () => {
+    store.messages.forEach((msg) => {
+      if (msg.type === 'file' && msg.fileRef) {
+        if (msg.fileRef.status === 'receiving' || msg.fileRef.status === 'sending') {
+          store.updateFileProgress(msg.id, msg.fileRef.progress || 0, 'error');
+        }
+      }
+    });
+  };
+
+  const cleanupTypingForPeer = (peerId: string) => {
+    const timer = typingTimersRef.current.get(peerId);
+    if (timer) {
+      clearTimeout(timer);
+      typingTimersRef.current.delete(peerId);
+    }
+    store.setTyping(peerId, false);
+  };
+
+  const cleanupPeerResources = (peerId: string) => {
+    const timer = disconnectTimersRef.current.get(peerId);
+    if (timer) {
+      clearTimeout(timer);
+      disconnectTimersRef.current.delete(peerId);
+    }
+    cleanupTypingForPeer(peerId);
+    failFileTransfersForPeer(peerId);
+    roomRef.current?.removePeer(peerId);
+    store.removePeer(peerId);
+  };
 
   // Main connection mounting lifecycle
   useEffect(() => {
@@ -136,6 +180,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           const oldPeer = store.peers.get(peerId);
           store.updatePeer(peerId, { connectionState: state });
 
+          // Centralized room status transition check
+          const currentPeers = Array.from(store.peers.values());
+          const hasFailed = currentPeers.some(p => p.connectionState === 'failed');
+          const hasDisconnected = currentPeers.some(p => p.connectionState === 'disconnected');
+          const allConnected = currentPeers.every(p => p.connectionState === 'connected');
+
+          if (store.roomStatus !== 'reconnecting' && store.roomStatus !== 'failed' && store.roomStatus !== 'closed' && store.roomStatus !== 'closing' && store.roomStatus !== 'signaling') {
+            if (currentPeers.length === 0 || allConnected) {
+              store.setRoomStatus('connected');
+            } else if (hasFailed || hasDisconnected) {
+              store.setRoomStatus('degraded');
+            } else {
+              store.setRoomStatus('connecting');
+            }
+          }
+
           if (state === 'connected') {
             const timer = disconnectTimersRef.current.get(peerId);
             if (timer) {
@@ -175,10 +235,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
                 disconnectTimersRef.current.delete(peerId);
                 const currentPeer = store.peers.get(peerId);
                 if (currentPeer && currentPeer.connectionState === 'disconnected') {
-                  store.removePeer(peerId);
-                  roomRef.current?.removePeer(peerId);
-
                   const name = currentPeer.handle ? `@${currentPeer.handle}` : (currentPeer.displayName || peerId.substring(0, 8));
+                  
+                  cleanupPeerResources(peerId);
                   addToast(`Peer left the room: ${name}`);
 
                   store.addMessage({
@@ -196,14 +255,22 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
               disconnectTimersRef.current.set(peerId, timer);
             }
           } else if (state === 'failed') {
-            const timer = disconnectTimersRef.current.get(peerId);
-            if (timer) {
-              clearTimeout(timer);
-              disconnectTimersRef.current.delete(peerId);
-            }
-            store.removePeer(peerId);
-            roomRef.current?.removePeer(peerId);
+            const oldPeer = store.peers.get(peerId);
+            const peerName = oldPeer?.displayName || peerId.substring(0, 8);
+            
+            cleanupPeerResources(peerId);
             addToast('Connection to a peer failed');
+
+            store.addMessage({
+              id: generateId(),
+              roomId,
+              type: 'system',
+              text: `Connection to ${peerName} failed.`,
+              sender: 'System',
+              senderId: 'system',
+              ts: Date.now(),
+              isOwn: false,
+            });
           }
         },
         onIceLog: (entry) => {
@@ -216,21 +283,55 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       const signaling = new PulsarSignaling(myPeerId);
       signalingRef.current = signaling;
 
+      store.setRoomStatus('signaling');
+
+      signaling.onStateChange((state) => {
+        if (!active) return;
+
+        if (state === 'connected') {
+          const peerList = Array.from(store.peers.values());
+          if (peerList.length === 0) {
+            store.setRoomStatus('connected');
+          } else {
+            store.setRoomStatus('connecting');
+          }
+          store.appendIceLog('[Signaling] Connected to signaling channel.');
+        } else if (state === 'reconnecting') {
+          store.setRoomStatus('reconnecting');
+          store.appendIceLog('[Signaling Error] Lost connection to signaling. Reconnecting...');
+          
+          failAllFileTransfers();
+          
+          typingTimersRef.current.forEach((t) => clearTimeout(t));
+          typingTimersRef.current.clear();
+          
+          roomRef.current?.close();
+          
+          const peersToCleanup = Array.from(store.peers.keys());
+          peersToCleanup.forEach((peerId) => {
+            store.removePeer(peerId);
+          });
+        } else if (state === 'disconnected') {
+          if (store.roomStatus !== 'closed' && store.roomStatus !== 'closing') {
+            store.setRoomStatus('disconnected');
+          }
+        } else if (state === 'failed') {
+          store.setRoomStatus('failed');
+        }
+      });
+
       signaling.onMessage(async (msg) => {
         await handleIncomingSignaling(msg);
       });
 
-      store.setIsConnecting(true);
-
       try {
         await signaling.connect();
         await signaling.joinRoom(roomId);
-        store.appendIceLog('[Signaling] Connected to signaling channel.');
       } catch (err) {
         console.error('Signaling connection failure:', err);
         store.appendIceLog('[Signaling Error] Failed to connect signaling server.');
         if (active) {
-          store.setIsConnecting(false);
+          store.setRoomStatus('failed');
           store.addMessage({
             id: generateId(),
             roomId,
@@ -243,8 +344,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           });
         }
       }
-
-
     }
 
     init();
@@ -261,14 +360,19 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       }
     }, 2000);
 
+    const currentDisconnectTimers = disconnectTimersRef.current;
+    const currentTypingTimers = typingTimersRef.current;
+
     // Unmount cleanup
     return () => {
       active = false;
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       
-      // Clear and clean all disconnect timers
-      disconnectTimersRef.current.forEach((timer) => clearTimeout(timer));
-      disconnectTimersRef.current.clear();
+      // Clear and clean all timers
+      currentDisconnectTimers.forEach((timer) => clearTimeout(timer));
+      currentDisconnectTimers.clear();
+      currentTypingTimers.forEach((timer) => clearTimeout(timer));
+      currentTypingTimers.clear();
       
       // Close WebRTC room & Ably connection
       roomRef.current?.close();
@@ -287,26 +391,39 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       case 'room-joined':
         store.appendIceLog(`[Signaling] Joined room. Existing peers: ${msg.existingPeers?.join(', ') || 'None'}`);
         if (msg.existingPeers) {
+          store.setRoomStatus('connecting');
           for (const peerId of msg.existingPeers) {
             const isInitiator = myPeerId < peerId;
+            
+            // Cleanup any stale connections for peerId
+            cleanupPeerResources(peerId);
+
             store.addPeer({
               peerId,
               displayName: `Peer_${peerId.substring(0, 4)}`,
-              connectionState: isInitiator ? 'connecting' : 'new',
+              connectionState: isInitiator ? 'negotiating' : 'new',
               isHost: false,
             });
             await room.addPeer(peerId, isInitiator);
           }
+        } else {
+          store.setRoomStatus('connected');
         }
         break;
 
       case 'peer-joined':
         store.appendIceLog(`[Signaling] Peer ${msg.peerId} entered signaling channel.`);
+        store.setRoomStatus('connecting');
+        
         const isInitiator = myPeerId < msg.peerId;
+        
+        // Cleanup any stale connections for peerId
+        cleanupPeerResources(msg.peerId);
+
         store.addPeer({
           peerId: msg.peerId,
           displayName: `Peer_${msg.peerId.substring(0, 4)}`,
-          connectionState: isInitiator ? 'connecting' : 'new',
+          connectionState: isInitiator ? 'negotiating' : 'new',
           isHost: false,
         });
         await room.addPeer(msg.peerId, isInitiator);
@@ -322,7 +439,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             store.addPeer({
               peerId: msg.fromPeer,
               displayName: `Peer_${msg.fromPeer.substring(0, 4)}`,
-              connectionState: 'connecting',
+              connectionState: 'negotiating',
               isHost: false,
             });
             rxPeer = await room.addPeer(msg.fromPeer, false);
@@ -360,18 +477,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       case 'peer-left':
         store.appendIceLog(`[Signaling] Peer ${msg.peerId} disconnected.`);
         
-        // Immediately cancel disconnect timer
-        const timer = disconnectTimersRef.current.get(msg.peerId);
-        if (timer) {
-          clearTimeout(timer);
-          disconnectTimersRef.current.delete(msg.peerId);
-        }
-
         const peerObj = store.peers.get(msg.peerId);
         const name = peerObj?.displayName || msg.peerId.substring(0, 8);
 
-        store.removePeer(msg.peerId);
-        room.removePeer(msg.peerId);
+        cleanupPeerResources(msg.peerId);
 
         addToast(`Peer left the room: ${name}`);
         
@@ -380,7 +489,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           id: generateId(),
           roomId,
           type: 'system',
-          text: `Peer left the room.`,
+          text: `${name} left the room.`,
           sender: 'System',
           senderId: 'system',
           ts: Date.now(),
@@ -511,7 +620,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         break;
 
       case 'typing':
-        store.setTyping(msg.senderId, msg.isTyping);
+        const existingTimer = typingTimersRef.current.get(msg.senderId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          typingTimersRef.current.delete(msg.senderId);
+        }
+
+        if (msg.isTyping) {
+          store.setTyping(msg.senderId, true);
+          
+          const newTimer = setTimeout(() => {
+            store.setTyping(msg.senderId, false);
+            typingTimersRef.current.delete(msg.senderId);
+          }, INCOMING_TYPING_TIMEOUT_MS);
+          
+          typingTimersRef.current.set(msg.senderId, newTimer);
+        } else {
+          store.setTyping(msg.senderId, false);
+        }
         break;
     }
   };
@@ -618,9 +744,11 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     roomRef.current?.broadcast(wireMsg);
   };
 
+  const hasConnectedPeers = Array.from(store.peers.values()).some((p) => p.connectionState === 'connected');
+
   // When connection opens, broadcast displayName info
   useEffect(() => {
-    if (store.isConnected && displayName) {
+    if (hasConnectedPeers && displayName) {
       let myHandle = '';
       let myColor = '';
       try {
@@ -641,7 +769,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       };
       roomRef.current?.broadcast(infoMsg);
     }
-  }, [store.isConnected, displayName, myPeerId]);
+  }, [hasConnectedPeers, displayName, myPeerId]);
 
   const handleManualRefreshStats = async () => {
     const room = roomRef.current;
@@ -654,12 +782,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     }
   };
 
-  const isInputDisabled = !store.isConnected;
+  const isInputDisabled = !hasConnectedPeers;
 
-  // Typing peers display formatter
-  const typingPeerNames = Array.from(store.typingPeers)
-    .map(id => store.peers.get(id)?.displayName)
-    .filter(Boolean);
+
 
   return (
     <div className="flex w-screen h-screen overflow-hidden bg-bg-primary">

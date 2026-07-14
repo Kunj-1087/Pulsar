@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { cn } from '../../lib/utils';
 
 interface IdentityGateProps {
@@ -93,7 +93,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
     if (!regex.test(val)) {
       // Flash bottom border red for 200ms
       setBorderFlashRed(true);
-      const timer = setTimeout(() => setBorderFlashRed(false), 200);
+      setTimeout(() => setBorderFlashRed(false), 200);
       return;
     }
     
@@ -216,7 +216,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                 )}
                 style={{ transitionDelay: '150ms' }}
               >
-                This is how others will see you. Pick something you like — you can't change it mid-session.
+                This is how others will see you. Pick something you like — you can&apos;t change it mid-session.
               </p>
 
               {/* Element 3: Input Field */}

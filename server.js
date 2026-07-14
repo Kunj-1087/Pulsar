@@ -22,6 +22,30 @@ wss.on('connection', (ws) => {
         }
         const room = rooms.get(currentRoom);
 
+        // Check if there is an existing socket for the same peerId
+        let staleSocket = null;
+        room.forEach((peer) => {
+          if (peer !== ws && peer._peerId === msg.peerId) {
+            staleSocket = peer;
+          }
+        });
+
+        if (staleSocket) {
+          console.log(`[Pulsar Server] Stale socket found for rejoining peer ${msg.peerId}. Cleaning it up.`);
+          room.delete(staleSocket);
+          // Notify other peers about the stale peer leaving so they reset WebRTC
+          room.forEach((peer) => {
+            if (peer !== ws && peer.readyState === 1) {
+              peer.send(JSON.stringify({
+                type: 'peer-left',
+                peerId: msg.peerId,
+              }));
+            }
+          });
+          staleSocket._roomId = null; // Bypass the normal close event notification loop
+          staleSocket.close();
+        }
+
         if (room.size >= 6) {
           ws.send(JSON.stringify({
             type: 'error',
@@ -78,20 +102,22 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     if (ws._roomId && rooms.has(ws._roomId)) {
       const room = rooms.get(ws._roomId);
-      room.delete(ws);
-      // Notify remaining peers
-      room.forEach((peer) => {
-        if (peer.readyState === 1) {
-          peer.send(JSON.stringify({
-            type: 'peer-left',
-            peerId: ws._peerId,
-          }));
+      const wasDeleted = room.delete(ws);
+      if (wasDeleted) {
+        // Notify remaining peers
+        room.forEach((peer) => {
+          if (peer.readyState === 1) {
+            peer.send(JSON.stringify({
+              type: 'peer-left',
+              peerId: ws._peerId,
+            }));
+          }
+        });
+        if (room.size === 0) {
+          rooms.delete(ws._roomId);
         }
-      });
-      if (room.size === 0) {
-        rooms.delete(ws._roomId);
+        console.log(`[Pulsar] Peer ${ws._peerId} left room ${ws._roomId}. Room size: ${room.size}`);
       }
-      console.log(`[Pulsar] Peer ${ws._peerId} left room ${ws._roomId}. Room size: ${room.size}`);
     }
   });
 });

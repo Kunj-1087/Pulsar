@@ -22,12 +22,16 @@ export interface FileRef {
   status: 'sending' | 'receiving' | 'complete' | 'error';
 }
 
+export type RoomConnectionStatus = 'idle' | 'signaling' | 'connecting' | 'connected' | 'degraded' | 'reconnecting' | 'failed' | 'closing' | 'closed';
+
+export type PeerConnectionState = 'new' | 'negotiating' | 'connected' | 'disconnected' | 'failed' | 'closed';
+
 export interface Peer {
   peerId: string;
   displayName?: string;
   handle?: string;
   peerColor?: string;
-  connectionState: RTCPeerConnectionState;
+  connectionState: PeerConnectionState;
   isHost: boolean;
 }
 
@@ -56,6 +60,7 @@ export type SignalingMessage =
   | { type: 'peer-left'; peerId: string }
   | { type: 'room-created'; roomId: string }
   | { type: 'room-joined'; roomId: string; existingPeers: string[] }
+  | { type: 'join-room'; roomId: string; peerId: string }
   | { type: 'error'; message: string };
 
 export interface ConnectionStats {

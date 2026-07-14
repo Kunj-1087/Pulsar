@@ -48,21 +48,32 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     if (val.length <= MAX_CHAR_LIMIT) {
       setText(val);
       
-      // Handle typing notifications
-      if (!isTypingRef.current) {
-        isTypingRef.current = true;
-        onTyping(true);
+      if (val === '') {
+        if (isTypingRef.current) {
+          isTypingRef.current = false;
+          onTyping(false);
+        }
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = null;
+        }
+      } else {
+        // Handle typing notifications
+        if (!isTypingRef.current) {
+          isTypingRef.current = true;
+          onTyping(true);
+        }
+        
+        // Reset typing timeout on new keystrokes
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+        
+        typingTimeoutRef.current = setTimeout(() => {
+          isTypingRef.current = false;
+          onTyping(false);
+        }, 1500);
       }
-      
-      // Reset typing timeout on new keystrokes
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      
-      typingTimeoutRef.current = setTimeout(() => {
-        isTypingRef.current = false;
-        onTyping(false);
-      }, 1500);
     }
   };
 
@@ -79,6 +90,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       // Cancel typing immediately upon sending
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
       }
       isTypingRef.current = false;
       onTyping(false);
@@ -123,14 +135,29 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }
   };
 
+  const handleBlur = () => {
+    setIsFocused(false);
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      onTyping(false);
+    }
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = null;
+    }
+  };
+
   // Clean up typing timeout on unmount
   useEffect(() => {
     return () => {
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
+      if (isTypingRef.current) {
+        onTyping(false);
+      }
     };
-  }, []);
+  }, [onTyping]);
 
   const characterCount = text.length;
   const showCounter = characterCount >= WARNING_THRESHOLD;
@@ -174,7 +201,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
             onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
+            onBlur={handleBlur}
             placeholder={disabled ? "Waiting for peers to join..." : "Write a message..."}
             disabled={disabled}
             className={cn(

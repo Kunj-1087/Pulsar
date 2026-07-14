@@ -1,14 +1,40 @@
-'use client';
-
 import React from 'react';
 import { useChatStore } from '../../store/chatStore';
 import { Badge } from '../ui/Badge';
 
 export const PeerStatus: React.FC = () => {
-  const { peers } = useChatStore();
+  const { peers, roomStatus } = useChatStore();
 
   const peerList = Array.from(peers.values());
   const connectedPeers = peerList.filter((p) => p.connectionState === 'connected');
+
+  if (roomStatus === 'reconnecting') {
+    return (
+      <div className="h-8 bg-[#1a1a1a] border-b border-border-default px-4 flex items-center justify-between text-xs font-mono text-text-muted select-none">
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-status-yellow animate-pulse" />
+          <span className="text-status-yellow font-bold">Signaling connection lost. Reconnecting...</span>
+        </div>
+        <div>
+          <span>Mesh Paused</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (roomStatus === 'failed') {
+    return (
+      <div className="h-8 bg-[#1a1a1a] border-b border-border-default px-4 flex items-center justify-between text-xs font-mono text-text-muted select-none">
+        <div className="flex items-center gap-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-status-red" />
+          <span className="text-status-red font-bold">Signaling server connection failed.</span>
+        </div>
+        <div>
+          <span>Offline</span>
+        </div>
+      </div>
+    );
+  }
 
   if (connectedPeers.length === 0) {
     return (
