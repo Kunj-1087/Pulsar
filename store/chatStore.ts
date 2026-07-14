@@ -35,6 +35,9 @@ interface ChatStore {
   remoteSdp: string | null;
   setRemoteSdp: (sdp: string | null) => void;
   
+  signalingDriverName: 'Primary' | 'Backup (Ably)' | 'None';
+  setSignalingDriverName: (name: 'Primary' | 'Backup (Ably)' | 'None') => void;
+
   reset: () => void;
 }
 
@@ -154,6 +157,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   remoteSdp: null,
   setRemoteSdp: (remoteSdp) => set({ remoteSdp }),
   
+  signalingDriverName: 'None',
+  setSignalingDriverName: (signalingDriverName) => set({ signalingDriverName }),
+
   reset: () => set({
     room: null,
     peers: new Map(),
@@ -164,5 +170,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     iceLog: [],
     localSdp: null,
     remoteSdp: null,
+    signalingDriverName: 'None',
   }),
 }));

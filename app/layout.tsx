@@ -1,6 +1,11 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, Space_Mono, JetBrains_Mono } from 'next/font/google';
 import "./globals.css";
+import { ErrorBoundary } from '../components/ErrorBoundary';
+import { GlobalListener } from '../components/GlobalListener';
+import { ToastContainer } from '../components/ui/ToastContainer';
+import { OfflineBanner } from '../components/OfflineBanner';
+import { PWAInstallPrompt } from '../components/PWAInstallPrompt';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -49,7 +54,13 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${spaceMono.variable} ${jetbrainsMono.variable} antialiased bg-bg-primary text-text-primary`}
       >
-        {children}
+        <ErrorBoundary>
+          <OfflineBanner />
+          {children}
+          <GlobalListener />
+          <PWAInstallPrompt />
+          <ToastContainer />
+        </ErrorBoundary>
       </body>
     </html>
   );

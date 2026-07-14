@@ -68,6 +68,7 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
     localSdp,
     remoteSdp,
     peers,
+    signalingDriverName,
   } = useChatStore();
 
   const [expandedSection, setExpandedSection] = useState<string | null>('connection');
@@ -217,6 +218,10 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
               )}
             >
               <div className="p-3 space-y-2 bg-[#121212]/50">
+                <div className="flex justify-between">
+                  <span className="text-text-muted">Signaling Transport:</span>
+                  <span className="font-bold text-[#e6e8e6]">{signalingDriverName}</span>
+                </div>
                 <div className="flex justify-between">
                   <span className="text-text-muted">Active Peer ID:</span>
                   <span className="text-text-bright truncate max-w-[180px]">{activePeer?.peerId || 'None'}</span>

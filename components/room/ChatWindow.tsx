@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { generateId, cn } from '../../lib/utils';
 import { useChatStore } from '../../store/chatStore';
-import { PulsarSignaling } from '../../lib/signaling';
+import { FallbackSignalingDriver, SignalingDriver } from '../../lib/signaling';
 import { PulsarRoom } from '../../lib/webrtc';
 import { FileReceiver, decodeBinaryFrame } from '../../lib/fileTransfer';
 import { getMessages, saveMessage, saveFile, saveRoom } from '../../lib/storage';
@@ -13,6 +13,9 @@ import { PeerStatus } from './PeerStatus';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { DevPanel } from '../dev/DevPanel';
+import { toast } from '../../store/toastStore';
+import { X } from 'lucide-react';
+import { Button } from '../ui/Button';
 
 interface ChatWindowProps {
   roomId: string;
@@ -23,33 +26,41 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
   const [displayName, setDisplayName] = useState('');
   const [myPeerId] = useState(() => generateId());
+  const [showShortcutsModal, setShowShortcutsModal] = useState(false);
 
-  // Stacked toast notifications
-  interface ToastItem {
-    id: string;
-    message: string;
-    visible: boolean;
-  }
-  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (store.devModeEnabled) {
+          store.toggleDevMode();
+        }
+        if (showShortcutsModal) {
+          setShowShortcutsModal(false);
+        }
+      }
+      
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        const textarea = document.querySelector('textarea');
+        textarea?.focus();
+      }
+      
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        setShowShortcutsModal((prev) => !prev);
+      }
 
-  const addToast = (message: string) => {
-    const id = Math.random().toString();
-    setToasts((prev) => [...prev, { id, message, visible: true }]);
-
-    // Slide out/fade after 3s
-    setTimeout(() => {
-      setToasts((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, visible: false } : t))
-      );
-      // Remove from state list after 150ms transition
-      setTimeout(() => {
-        setToasts((prev) => prev.filter((t) => t.id !== id));
-      }, 150);
-    }, 3000);
-  };
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
+        e.preventDefault();
+        store.toggleDevMode();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [store, showShortcutsModal]);
 
   // Refs for WebRTC instance mappings
-  const signalingRef = useRef<PulsarSignaling | null>(null);
+  const signalingRef = useRef<SignalingDriver | null>(null);
   const roomRef = useRef<PulsarRoom | null>(null);
   const fileReceiversRef = useRef<Map<string, FileReceiver>>(new Map());
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -210,7 +221,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
             if (oldPeer?.connectionState !== 'connected') {
               const name = oldPeer?.handle ? `@${oldPeer.handle}` : (oldPeer?.displayName || peerId.substring(0, 8));
-              addToast(`Peer joined the room: ${name}`);
+              toast.success(`Peer joined the room: ${name}`, { title: 'Peer Connected' });
 
               // Send our peer info immediately
               if (displayName) {
@@ -242,8 +253,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
                 if (currentPeer && currentPeer.connectionState === 'disconnected') {
                   const name = currentPeer.handle ? `@${currentPeer.handle}` : (currentPeer.displayName || peerId.substring(0, 8));
                   
-                  cleanupPeerResources(peerId);
-                  addToast(`Peer left the room: ${name}`);
+                   cleanupPeerResources(peerId);
+                  toast.info(`Peer left the room: ${name}`, { title: 'Peer Disconnected' });
 
                   store.addMessage({
                     id: generateId(),
@@ -264,7 +275,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             const peerName = oldPeer?.displayName || peerId.substring(0, 8);
             
             cleanupPeerResources(peerId);
-            addToast('Connection to a peer failed');
+            toast.warning(`Connection to peer ${peerName} failed.`, { title: 'Connection Failure' });
 
             store.addMessage({
               id: generateId(),
@@ -285,13 +296,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       roomRef.current = room;
 
       // 4. Setup Signaling Manager
-      const signaling = new PulsarSignaling(myPeerId);
+      const signaling = new FallbackSignalingDriver(myPeerId);
       signalingRef.current = signaling;
 
       store.setRoomStatus('signaling');
 
       signaling.onStateChange((state) => {
         if (!active) return;
+
+        store.setSignalingDriverName(signaling.getActiveDriverName());
 
         if (state === 'connected') {
           const peerList = Array.from(store.peers.values());
@@ -301,6 +314,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             store.setRoomStatus('connecting');
           }
           store.appendIceLog('[Signaling] Connected to signaling channel.');
+          
+          if (store.roomStatus === 'reconnecting') {
+            toast.success('Signaling connection restored.', { title: 'Network Restored' });
+          }
         } else if (state === 'reconnecting') {
           store.setRoomStatus('reconnecting');
           store.appendIceLog('[Signaling Error] Lost connection to signaling. Reconnecting...');
@@ -316,12 +333,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           peersToCleanup.forEach((peerId) => {
             store.removePeer(peerId);
           });
+          
+          toast.warning('Signaling connection lost. Reconnecting...', { title: 'Network Interrupted' });
         } else if (state === 'disconnected') {
           if (store.roomStatus !== 'closed' && store.roomStatus !== 'closing') {
             store.setRoomStatus('disconnected');
           }
         } else if (state === 'failed') {
           store.setRoomStatus('failed');
+          toast.error('Unable to connect to signaling systems. Please check your network.', { title: 'Signaling Offline' });
         }
       });
 
@@ -332,16 +352,18 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       try {
         await signaling.connect();
         await signaling.joinRoom(roomId);
+        store.setSignalingDriverName(signaling.getActiveDriverName());
       } catch (err) {
         console.error('Signaling connection failure:', err);
         store.appendIceLog('[Signaling Error] Failed to connect signaling server.');
         if (active) {
           store.setRoomStatus('failed');
+          toast.error('Unable to connect to signaling. Both WebSocket and Ably backup systems are offline.', { title: 'Signaling Failure' });
           store.addMessage({
             id: generateId(),
             roomId,
             type: 'system',
-            text: 'Signaling failed. Make sure the local signaling server (ws://localhost:8080) is running.',
+            text: 'Signaling failed. WebSocket and Ably fallback systems are unreachable.',
             sender: 'System',
             senderId: 'system',
             ts: Date.now(),
@@ -883,6 +905,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
 
 
+  const allPeersFailedICE = Array.from(store.peers.values()).length > 0 && Array.from(store.peers.values()).every(
+    (p) => p.connectionState === 'failed' || p.connectionState === 'closed'
+  );
+
   return (
     <div className="flex w-screen h-screen overflow-hidden bg-bg-primary">
       {/* Main chat interface */}
@@ -894,54 +920,86 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       >
         <RoomHeader roomId={roomId} />
         <PeerStatus />
-        
-        <MessageList messages={store.messages} />
 
-        <MessageInput
-          onSendMessage={handleSendMessage}
-          onSendFile={handleSendFile}
-          onTyping={handleTyping}
-          disabled={isInputDisabled}
-        />
+        {allPeersFailedICE && (
+          <div className="bg-status-red/10 border-b border-status-red/30 px-4 py-2 flex items-center justify-between text-xs font-mono text-status-red select-none">
+            <span className="font-bold">ALL P2P CHANNELS FAILED. YOUR NETWORK MAY REQUIRE A TURN RELAY.</span>
+          </div>
+        )}
+        
+        <MessageList messages={store.messages} roomId={roomId} />
+
+        {store.roomStatus === 'failed' ? (
+          <div className="border-t border-border-default bg-[#1a1a1a] px-4 py-4 flex flex-col items-center justify-center gap-3 select-none">
+            <p className="font-mono text-xs text-status-red flex items-center gap-1.5 font-bold uppercase tracking-wider">
+              <span>Signaling offline. Connection could not be established.</span>
+            </p>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={async () => {
+                store.setRoomStatus('signaling');
+                try {
+                  await signalingRef.current?.connect();
+                  await signalingRef.current?.joinRoom(roomId);
+                } catch {
+                  store.setRoomStatus('failed');
+                }
+              }}
+              className="text-xs h-8 px-4"
+            >
+              Retry Connection
+            </Button>
+          </div>
+        ) : (
+          <MessageInput
+            onSendMessage={handleSendMessage}
+            onSendFile={handleSendFile}
+            onTyping={handleTyping}
+            disabled={isInputDisabled}
+            roomId={roomId}
+          />
+        )}
       </div>
 
       {/* Developer Dashboard slide-out */}
       <DevPanel onRefreshStats={handleManualRefreshStats} />
 
-      {/* Stacked toast notifications */}
-      <div
-        style={{
-          position: 'fixed',
-          top: '24px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px',
-          zIndex: 1000,
-          pointerEvents: 'none',
-        }}
-      >
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            style={{
-              background: '#242424',
-              color: '#e6e8e6',
-              border: '1px solid #2e2e2e',
-              borderRadius: '6px',
-              padding: '10px 16px',
-              fontFamily: 'Inter, sans-serif',
-              fontSize: '14px',
-              fontWeight: 400,
-              opacity: t.visible ? 1 : 0,
-              transition: t.visible ? 'opacity 150ms ease-in' : 'opacity 150ms ease-out',
-            }}
-          >
-            {t.message}
+      {/* Keyboard Shortcuts Modal */}
+      {showShortcutsModal && (
+        <div className="fixed inset-0 z-50 bg-[#121212]/80 flex items-center justify-center p-4">
+          <div className="w-full max-w-[340px] bg-bg-surface border border-border-default rounded-md p-5 relative select-none font-mono">
+            <button
+              onClick={() => setShowShortcutsModal(false)}
+              className="absolute top-4 right-4 text-text-muted hover:text-text-bright transition-colors focus:outline-none"
+              aria-label="Close shortcuts modal"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <h3 className="text-xs uppercase tracking-wider text-text-muted mb-4 font-bold">
+              Keyboard Shortcuts
+            </h3>
+            <div className="space-y-2.5 text-xs text-text-primary">
+              <div className="flex justify-between border-b border-border-default/40 pb-1.5">
+                <span>Focus Input</span>
+                <span className="text-[#e6e8e6] bg-[#2d2d2d] px-1.5 rounded-sm">Ctrl + K</span>
+              </div>
+              <div className="flex justify-between border-b border-border-default/40 pb-1.5">
+                <span>Dev Panel</span>
+                <span className="text-[#e6e8e6] bg-[#2d2d2d] px-1.5 rounded-sm">Ctrl + Shift + D</span>
+              </div>
+              <div className="flex justify-between border-b border-border-default/40 pb-1.5">
+                <span>Show Shortcuts</span>
+                <span className="text-[#e6e8e6] bg-[#2d2d2d] px-1.5 rounded-sm">Ctrl + /</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Dismiss modal</span>
+                <span className="text-[#e6e8e6] bg-[#2d2d2d] px-1.5 rounded-sm">ESC</span>
+              </div>
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

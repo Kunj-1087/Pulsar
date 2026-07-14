@@ -11,6 +11,7 @@ export class PulsarSignaling {
   private peerId: string;
   private roomId: string | null = null;
 
+  private status: 'connected' | 'disconnected' | 'reconnecting' | 'failed' = 'disconnected';
   private intentionalClose = false;
   private reconnectAttempts = 0;
   private reconnectTimer: NodeJS.Timeout | null = null;
@@ -19,6 +20,15 @@ export class PulsarSignaling {
   constructor(peerId: string) {
     this.peerId = peerId;
     this.url = process.env.NEXT_PUBLIC_SIGNALING_WS_URL || 'ws://localhost:8080';
+  }
+
+  private setStatus(state: 'connected' | 'disconnected' | 'reconnecting' | 'failed') {
+    this.status = state;
+    this.stateChangeHandler?.(state);
+  }
+
+  getStatus(): 'connected' | 'disconnected' | 'reconnecting' | 'failed' {
+    return this.status;
   }
 
   connect(): Promise<void> {
@@ -40,7 +50,7 @@ export class PulsarSignaling {
         }
         console.log('[Pulsar Signaling] Connected to signaling server');
         this.reconnectAttempts = 0;
-        this.stateChangeHandler?.('connected');
+        this.setStatus('connected');
         resolve();
       };
 
@@ -58,13 +68,14 @@ export class PulsarSignaling {
       this.ws.onerror = (err) => {
         if (currentGen !== this.generation) return;
         console.error('[Pulsar Signaling] WebSocket error:', err);
+        this.setStatus('failed');
         reject(err);
       };
 
       this.ws.onclose = () => {
         if (currentGen !== this.generation) return;
         console.log('[Pulsar Signaling] Disconnected from signaling server');
-        this.stateChangeHandler?.('disconnected');
+        this.setStatus('disconnected');
         if (!this.intentionalClose) {
           this.handleReconnect();
         }
@@ -88,7 +99,7 @@ export class PulsarSignaling {
     this.reconnectAttempts++;
     console.log(`[Pulsar Signaling] Reconnecting in ${Math.round(finalDelay)}ms (attempt ${this.reconnectAttempts})`);
     
-    this.stateChangeHandler?.('reconnecting');
+    this.setStatus('reconnecting');
 
     this.reconnectTimer = setTimeout(() => {
       if (this.intentionalClose) return;
@@ -103,7 +114,7 @@ export class PulsarSignaling {
         }
         console.log('[Pulsar Signaling] Reconnected to signaling server');
         this.reconnectAttempts = 0;
-        this.stateChangeHandler?.('connected');
+        this.setStatus('connected');
         if (this.roomId) {
           this.joinRoom(this.roomId);
         }
@@ -128,7 +139,7 @@ export class PulsarSignaling {
       this.ws.onclose = () => {
         if (currentGen !== this.generation) return;
         console.log('[Pulsar Signaling] Reconnect socket closed unexpectedly');
-        this.stateChangeHandler?.('disconnected');
+        this.setStatus('disconnected');
         this.handleReconnect();
       };
     }, finalDelay);
@@ -165,6 +176,21 @@ export class PulsarSignaling {
     }
     this.ws?.close();
     this.ws = null;
-    this.stateChangeHandler?.('disconnected');
+    this.setStatus('disconnected');
   }
 }
+
+export type SignalingStatus = 'connected' | 'disconnected' | 'reconnecting' | 'failed';
+
+export interface SignalingDriver {
+  connect(): Promise<void>;
+  joinRoom(roomId: string): void | Promise<void>;
+  disconnect(): void;
+  send(msg: SignalingMessage): void;
+  onMessage(handler: (msg: SignalingMessage) => void): void;
+  onStateChange(handler: (state: SignalingStatus) => void): void;
+  getStatus(): SignalingStatus;
+}
+
+export { AblySignaling } from './signaling/ablyDriver';
+export { FallbackSignalingDriver } from './signaling/fallbackDriver';

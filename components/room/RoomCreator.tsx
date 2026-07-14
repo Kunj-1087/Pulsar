@@ -18,6 +18,24 @@ export const RoomCreator: React.FC = () => {
   
   const [createError, setCreateError] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(false);
+
+  // Monitor connectivity state
+  useEffect(() => {
+    if (typeof navigator !== 'undefined') {
+      setIsOffline(!navigator.onLine);
+      
+      const handleOnline = () => setIsOffline(false);
+      const handleOffline = () => setIsOffline(true);
+      
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
+    }
+  }, []);
 
   // Load identity and room code from localStorage / URL
   useEffect(() => {
@@ -41,6 +59,7 @@ export const RoomCreator: React.FC = () => {
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOffline) return;
     setIsCreating(true);
     setCreateError(null);
 
@@ -72,6 +91,7 @@ export const RoomCreator: React.FC = () => {
 
   const handleJoinRoom = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isOffline) return;
     setIsJoining(true);
     setJoinError(null);
 
@@ -120,6 +140,12 @@ export const RoomCreator: React.FC = () => {
         {/* Section divider line */}
         <div className="h-[1px] bg-border-default" />
 
+        {isOffline && (
+          <div className="p-3 bg-status-yellow/10 border border-status-yellow/30 text-status-yellow text-[11px] font-mono rounded select-none text-center">
+            You are offline. Create and join operations require network signaling access.
+          </div>
+        )}
+
         {/* Create Room Form */}
         <form onSubmit={handleCreateRoom} className="space-y-3">
           <h2 className="text-xs font-mono uppercase text-text-muted">
@@ -129,7 +155,7 @@ export const RoomCreator: React.FC = () => {
             type="submit"
             className="w-full"
             loading={isCreating}
-            disabled={isJoining}
+            disabled={isJoining || isOffline}
           >
             Create Room
           </Button>
@@ -151,16 +177,16 @@ export const RoomCreator: React.FC = () => {
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               placeholder="ROOM CODE"
-              maxLength={6}
+              maxLength={8}
               className="font-mono uppercase text-center text-lg tracking-wider"
-              disabled={isJoining || isCreating}
+              disabled={isJoining || isCreating || isOffline}
             />
             <Button
               type="submit"
               variant="ghost"
               className="shrink-0"
               loading={isJoining}
-              disabled={isCreating || !roomCode}
+              disabled={isCreating || !roomCode || isOffline}
             >
               Join
             </Button>
