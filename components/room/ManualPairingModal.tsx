@@ -94,7 +94,7 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
               onClose();
             }
           },
-          onIceLog: (entry) => store.appendIceLog(entry),
+          onIceLog: () => {},
         });
       }
 
@@ -185,7 +185,7 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
               onClose();
             }
           },
-          onIceLog: (entry) => store.appendIceLog(entry),
+          onIceLog: () => {},
         });
       }
 

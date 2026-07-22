@@ -1,291 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ══════════════════════════════════════════════════════════════
    QUARK DESIGN SYSTEM — Color Tokens
-   
-   Single-accent palette inspired by Netflix's product UI.
-   - Near-black backgrounds with subtle elevation steps.
-   - Netflix red (#E50914) as the sole brand accent for CTAs,
-     active states, and critical errors.
-   - Status indicators use neutral grey/white tones so they
-     never compete with the brand red.
    ══════════════════════════════════════════════════════════════ */
 
 :root {
-  --bg-base: #000000;
-  --bg-surface: #141414;
-  --bg-elevated: #1f1f1f;
-  --bg-overlay: #2a2a2a;
-  --accent: #E50914;
-  --accent-hover: #f40612;
-  --accent-muted: #4a0005;
+  --bg-base: #000000;       /* pure black — app background */
+  --bg-surface: #141414;    /* sidebars, panels */
+  --bg-elevated: #1f1f1f;   /* message items, input fields, hover states */
+  --bg-overlay: #2a2a2a;    /* tooltips, reaction picker, dropdowns */
+  --accent: #E50914;        /* Netflix red — the ONLY accent color */
+  --accent-hover: #f40612;  /* red hover state */
+  --accent-muted: #4a0005;  /* dark red — reply bar bg */
   --text-primary: #ffffff;
   --text-secondary: #a3a3a3;
   --text-muted: #525252;
   --border: #262626;
 
-  /* ── Backgrounds (Netflix black hierarchy) ── */
+  /* Legacy maps */
   --bg-void:     #000000;
   --bg-hover:    #242424;
   --bg-active:   #2E2E2E;
-
-  /* ── Foregrounds (White/grey contrast hierarchy) ── */
   --fg-primary:   #FFFFFF;
-  --fg-secondary: #B3B3B3;
-  --fg-muted:     #808080;
-  --fg-subtle:    #5A5A5A;
-  --fg-disabled:  #3A3A3A;
-
-  /* ── Borders & Hairlines ── */
-  --border-subtle:  #1A1A1A;
-  --border-dim:     #222222;
+  --fg-secondary: #A3A3A3;
+  --fg-muted:     #525252;
+  --border-dim:     #262626;
   --border-default: #262626;
   --border-strong:  #3A3A3A;
   --border-focus:   #E50914;
 
-  /* ── Single Brand Accent: Netflix Red ── */
-  --accent-pulsar:       #E50914;
-  --accent-pulsar-hover: #B20710;
-  --accent-pulsar-dim:   #7A0510;
-
-  /* Connected / E2EE — neutral light grey */
-  --accent-nebula:       #CCCCCC;
-  --accent-nebula-hover: #AAAAAA;
-  --accent-nebula-dim:   #888888;
-
-  /* Pending / Connecting — muted grey */
-  --accent-accretion:       #808080;
-  --accent-accretion-hover: #6A6A6A;
-  --accent-accretion-dim:   #555555;
-
-  /* Redshift — errors use the same red as the brand accent */
-  --accent-redshift:       #E50914;
-  --accent-redshift-hover: #B20710;
-  --accent-redshift-dim:   #7A0510;
-
-  /* Quasar — secondary crypto highlights, neutral grey */
-  --accent-quasar:       #B3B3B3;
-  --accent-quasar-hover: #999999;
-  --accent-quasar-dim:   #777777;
-
-  /* Legacy Compat Aliases */
-  --accent-photon:       var(--accent-pulsar);
-  --accent-photon-hover: var(--accent-pulsar-hover);
-  --accent-photon-dim:   var(--accent-pulsar-dim);
-  --accent-quantum:      var(--accent-quasar);
-  --accent-quantum-hover:var(--accent-quasar-hover);
-  --accent-quantum-dim:  var(--accent-quasar-dim);
-  --accent-flux:         var(--accent-pulsar);
-  --accent-flux-hover:   var(--accent-pulsar-hover);
-  --accent-pulse:        var(--accent-accretion);
-  --accent-pulse-hover:  var(--accent-accretion-hover);
-  --accent-decay:        var(--accent-redshift);
-  --accent-decay-hover:  var(--accent-redshift-hover);
-
-  /* ── Status Language ── */
-  --status-connected:    #CCCCCC;
-  --status-connecting:   #808080;
-  --status-reconnecting: #808080;
-  --status-failed:       var(--accent-redshift);
-  --status-idle:         #5A5A5A;
-  --status-e2ee:         #CCCCCC;
-  --status-offline:      #5A5A5A;
-
-  /* ── Glows & Shadows ── */
-  --glow-pulsar:    0 0 16px rgba(229, 9, 20, 0.3), 0 0 32px rgba(229, 9, 20, 0.12);
-  --glow-nebula:    0 0 12px rgba(204, 204, 204, 0.25);
-  --glow-accretion: 0 0 12px rgba(128, 128, 128, 0.2);
-  --glow-redshift:  0 0 16px rgba(229, 9, 20, 0.3), 0 0 32px rgba(229, 9, 20, 0.12);
-  --glow-quasar:    0 0 12px rgba(179, 179, 179, 0.2);
-  --glow-focus:     0 0 0 2px var(--bg-void), 0 0 0 4px var(--accent-pulsar);
-  --shadow-elevated: 0 12px 40px rgba(0, 0, 0, 0.7);
-  --shadow-modal:    0 32px 80px rgba(0, 0, 0, 0.85);
-
-  /* ── Motion Timing ── */
-  --duration-instant: 100ms;
-  --duration-fast:    200ms;
-  --duration-base:    300ms;
-  --duration-slow:    500ms;
-
-  /* ── Easing Curves ── */
-  --ease-standard:   cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-decelerate: cubic-bezier(0, 0, 0.2, 1);
-  --ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
-
-  /* Legacy compatibility maps */
-  --bg-primary:      var(--bg-void);
-  --text-primary:    var(--fg-primary);
-  --text-bright:     var(--fg-primary);
-  --text-muted:      var(--fg-secondary);
-  --border:          var(--border-dim);
-  --status-green:    var(--accent-nebula);
-  --status-red:      var(--accent-redshift);
-  --status-yellow:   var(--accent-accretion);
-  --sent-bubble:     var(--bg-elevated);
-  --received-bubble: var(--bg-surface);
+  --font-sans: 'Inter', sans-serif;
+  --font-mono: 'Space Mono', monospace;
 }
 
 body {
-  color: var(--fg-primary);
+  color: var(--text-primary);
   background: var(--bg-base);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ── Room Creator Scoped Theme ──
-   Uses the Netflix red accent for the room-landing card.
-   Already inherits --accent-pulsar = #E50914 from :root,
-   this scope only adjusts the glass/glow tokens to match. */
-.room-creator-theme {
-  --card-bg:           rgba(0, 0, 0, 0.75);
-  --card-border:       rgba(229, 9, 20, 0.12);
-  --card-shadow:       0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(229, 9, 20, 0.06);
-  --card-glow-aura:    radial-gradient(ellipse at center, rgba(229, 9, 20, 0.08) 0%, transparent 60%);
-
-  /* Button depth */
-  --btn-glow:          0 4px 16px rgba(229, 9, 20, 0.25);
-  --btn-glow-hover:    0 4px 24px rgba(229, 9, 20, 0.4);
-
-  /* Active node box */
-  --node-border:       rgba(229, 9, 20, 0.08);
-}
-
-/* ══════════════════════════════════════════════════════════════
-   TYPOGRAPHY — Font Feature Settings
-   ══════════════════════════════════════════════════════════════ */
-
 .font-mono {
+  font-family: var(--font-mono);
   font-feature-settings: "tnum" 1, "zero" 1, "ss01" 1;
 }
 
 .font-sans {
-  font-feature-settings: "calt" 1, "case" 1;
-}
-
-/* ══════════════════════════════════════════════════════════════
-   TYPOGRAPHY — Component Utilities
-   ══════════════════════════════════════════════════════════════ */
-
-@layer components {
-  /* Quark wordmark: lowercase, bold, tight tracking */
-  .type-wordmark {
-    font-family: var(--font-mono);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    text-transform: lowercase;
-  }
-
-  /* Terminal prefix for system messages */
-  .type-terminal-prefix {
-    font-family: var(--font-mono);
-    font-weight: 500;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--fg-subtle);
-  }
-
-  /* Terminal message text (after prefix) */
-  .type-terminal-msg {
-    font-family: var(--font-mono);
-    font-weight: 400;
-    font-size: 14px;
-    line-height: 20px;
-    color: var(--fg-muted);
-  }
-
-  /* Uppercase micro-labels for status pills, section headers */
-  .type-uppercase-label {
-    font-family: var(--font-mono);
-    font-weight: 500;
-    font-size: 12px;
-    line-height: 16px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-  }
-
-  /* Hero numerals: large numbers, room codes, stats */
-  .type-hero-numeral {
-    font-family: var(--font-mono);
-    font-weight: 500;
-    letter-spacing: -0.04em;
-    font-variant-numeric: tabular-nums;
-  }
-
-  /* Timestamps: monospace, tabular, subtle */
-  .type-timestamp {
-    font-family: var(--font-mono);
-    font-weight: 400;
-    font-size: 12px;
-    line-height: 16px;
-    font-variant-numeric: tabular-nums;
-    color: var(--fg-subtle);
-  }
-
-  /* Peer name handles */
-  .type-peer-name {
-    font-family: var(--font-mono);
-    font-weight: 500;
-    font-size: 16px;
-    line-height: 24px;
-    letter-spacing: 0;
-  }
-
-  /* Inline code styling */
-  .type-code {
-    font-family: var(--font-mono);
-    font-size: 13px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: 4px;
-    padding: 2px 6px;
-  }
-
-  /* Button label tracking */
-  .type-button-label {
-    font-family: var(--font-mono);
-    font-weight: 500;
-    letter-spacing: 0.05em;
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════
-   CONTAINER UTILITIES
-   ══════════════════════════════════════════════════════════════ */
-
-@layer components {
-  .container-narrow {
-    max-width: 480px;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .container-reading {
-    max-width: 640px;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .container-content {
-    max-width: 960px;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 16px;
-    padding-right: 16px;
-  }
-
-  .container-wide {
-    max-width: 1280px;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 24px;
-    padding-right: 24px;
-  }
+  font-family: var(--font-sans);
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -300,37 +66,17 @@ body {
   background: var(--bg-base);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-default);
+  background: var(--border);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--fg-subtle);
+  background: var(--text-muted);
 }
 
 /* ══════════════════════════════════════════════════════════════
    ANIMATION SYSTEM
-   
-   Keyframes for the Quark motion language.
-   All animations respect prefers-reduced-motion.
    ══════════════════════════════════════════════════════════════ */
 
-/* ── Message Animations ── */
-@keyframes quark-message-in-sent {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes quark-message-in-received {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes quark-message-in-system {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-
-/* ── UI Transitions ── */
 @keyframes quark-fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -341,207 +87,10 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes quark-slide-down {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+.animate-fade-in {
+  animation: quark-fade-in 150ms ease-out forwards;
 }
 
-@keyframes quark-scale-fade-in {
-  from { opacity: 0; transform: scale(0.97); }
-  to   { opacity: 1; transform: scale(1); }
-}
-
-/* ── Typing Dots ── */
-@keyframes quark-typing-bounce {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-4px); }
-}
-
-/* ── Cursor Blink ── */
-@keyframes quark-cursor-blink {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0; }
-}
-
-/* ── Glow Pulse ── */
-@keyframes quark-glow-pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.4; }
-}
-
-/* ── Nebula Ambient Drift ── */
-@keyframes nebula-drift-1 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  25%      { transform: translate(30px, -20px) scale(1.03); }
-  50%      { transform: translate(-20px, 30px) scale(0.97); }
-  75%      { transform: translate(10px, 10px) scale(1.01); }
-}
-
-@keyframes nebula-drift-2 {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  25%      { transform: translate(-25px, 15px) scale(1.02); }
-  50%      { transform: translate(20px, -25px) scale(0.98); }
-  75%      { transform: translate(-10px, -5px) scale(1.01); }
-}
-
-@keyframes nebula-fade {
-  0%, 100% { opacity: 0.35; }
-  50%      { opacity: 0.7; }
-}
-
-/* ── Toast ── */
-@keyframes quark-toast-in {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes quark-toast-out {
-  from { opacity: 1; transform: translateY(0); }
-  to   { opacity: 0; transform: translateY(16px); }
-}
-
-/* ── Scroll Pill ── */
-@keyframes quark-pill-in {
-  from { opacity: 0; transform: translate(-50%, 8px); }
-  to   { opacity: 1; transform: translate(-50%, 0); }
-}
-
-@keyframes quark-pill-out {
-  from { opacity: 1; transform: translate(-50%, 0); }
-  to   { opacity: 0; transform: translate(-50%, 8px); }
-}
-
-/* ══════════════════════════════════════════════════════════════
-   ANIMATION CLASSES
-   ══════════════════════════════════════════════════════════════ */
-
-.quark-animate-sent {
-  animation: quark-message-in-sent 200ms var(--ease-decelerate) forwards;
-}
-
-.quark-animate-received {
-  animation: quark-message-in-received 200ms var(--ease-decelerate) forwards;
-}
-
-.quark-animate-system {
-  animation: quark-message-in-system 300ms var(--ease-decelerate) forwards;
-}
-
-.quark-animate-system-msg {
-  animation: quark-message-in-system 250ms var(--ease-decelerate) forwards;
-}
-
-.quark-sdp-modal-in {
-  animation: quark-scale-fade-in 200ms var(--ease-decelerate) forwards;
-}
-
-.quark-download-in {
-  animation: quark-fade-in 150ms var(--ease-decelerate) forwards;
-}
-
-.quark-typing-dot-1 {
-  animation: quark-typing-bounce 400ms var(--ease-precise) infinite;
-  animation-delay: 0ms;
-}
-
-.quark-typing-dot-2 {
-  animation: quark-typing-bounce 400ms var(--ease-precise) infinite;
-  animation-delay: 120ms;
-}
-
-.quark-typing-dot-3 {
-  animation: quark-typing-bounce 400ms var(--ease-precise) infinite;
-  animation-delay: 240ms;
-}
-
-.quark-log-entry {
-  animation: quark-fade-in 150ms var(--ease-decelerate) forwards;
-}
-
-.quark-latency-fade-in {
-  animation: quark-fade-in 150ms var(--ease-precise) forwards;
-}
-
-.quark-pill-visible {
-  animation: quark-pill-in 200ms var(--ease-decelerate) forwards;
-}
-
-.quark-pill-hidden {
-  animation: quark-pill-out 150ms var(--ease-accelerate) forwards;
-}
-
-/* ══════════════════════════════════════════════════════════════
-   INTERACTIVE STATES
-   ══════════════════════════════════════════════════════════════ */
-
-/* Timestamp hover reveal */
-.timestamp-container {
-  opacity: 0;
-  transform: translateY(2px);
-  transition: opacity var(--duration-instant) var(--ease-accelerate),
-              transform var(--duration-instant) var(--ease-accelerate);
-}
-
-.bubble-container:hover .timestamp-container {
-  opacity: 1;
-  transform: translateY(0);
-  transition: opacity var(--duration-fast) var(--ease-decelerate),
-              transform var(--duration-fast) var(--ease-decelerate);
-}
-
-/* Terminal cursor in SDP viewer */
-.sdp-text-container::after {
-  content: "\2588";
-  display: inline-block;
-  color: var(--fg-primary);
-  animation: quark-cursor-blink 1s steps(2, start) infinite;
-  margin-left: 2px;
-}
-
-/* ══════════════════════════════════════════════════════════════
-   MOBILE & REDUCED MOTION
-   ══════════════════════════════════════════════════════════════ */
-
-@media (hover: none) {
-  .timestamp-container {
-    opacity: 0.4 !important;
-    transform: translateY(0) !important;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
-
-  .quark-animate-sent,
-  .quark-animate-received,
-  .quark-animate-system,
-  .quark-animate-system-msg,
-  .quark-sdp-modal-in,
-  .quark-download-in,
-  .quark-typing-dot-1,
-  .quark-typing-dot-2,
-  .quark-typing-dot-3,
-  .quark-log-entry,
-  .quark-latency-fade-in,
-  .quark-pill-visible,
-  .quark-pill-hidden {
-    animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
-  }
-
-  .timestamp-container,
-  .bubble-container,
-  .sdp-text-container::after {
-    transition: none !important;
-    transform: none !important;
-    animation: none !important;
-  }
+.animate-slide-up {
+  animation: quark-slide-up 200ms ease-out forwards;
 }

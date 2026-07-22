@@ -7,7 +7,6 @@ import { FallbackSignalingDriver, SignalingDriver } from '../../lib/signaling';
 import { QuarkRoom } from '../../lib/webrtc';
 import { FileReceiver, decodeBinaryFrame } from '../../lib/fileTransfer';
 import { getMessages, saveMessage, saveFile, saveRoom, getRoom, cleanupExpiredMessages, saveOutboxMessage, getOutboxMessages, removeOutboxMessage, saveFileProgress, getFileProgress, removeFileProgress, getChannelsByRoom, createChannel, deleteChannel, updateMessageReactionsInDB } from '../../lib/storage';
-import dynamic from 'next/dynamic';
 import { Message, SignalingMessage, DataChannelMessage, PeerConnectionState, Channel } from '../../types';
 import { RoomHeader } from './RoomHeader';
 import { PeerStatus } from './PeerStatus';
@@ -19,11 +18,6 @@ import { ManualPairingModal } from './ManualPairingModal';
 import { toast } from '../../store/toastStore';
 import { X } from 'lucide-react';
 import { Button } from '../ui/Button';
-
-const DevPanel = dynamic(
-  () => import('../dev/DevPanel').then((m) => m.DevPanel),
-  { ssr: false }
-);
 
 interface ChatWindowProps {
   roomId: string;
@@ -42,9 +36,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (store.devModeEnabled) {
-          store.toggleDevMode();
-        }
         if (showShortcutsModal) {
           setShowShortcutsModal(false);
         }
@@ -59,11 +50,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       if ((e.ctrlKey || e.metaKey) && e.key === '/') {
         e.preventDefault();
         setShowShortcutsModal((prev) => !prev);
-      }
-
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        store.toggleDevMode();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -82,17 +68,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const cancelledTransfersRef = useRef<Set<string>>(new Set());
   const [ephemeral] = useState(false);
 
-  // Handle Ctrl+Shift+D / Cmd+Shift+D keyboard shortcuts for Dev Panel
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'd') {
-        e.preventDefault();
-        store.toggleDevMode();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [store]);
+
 
   // Helpers for file transfers and peer resource cleaning
   const failFileTransfersForPeer = (peerId: string) => {
@@ -358,9 +334,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           handleIncomingBinaryMessage(peerId, arrayBuffer);
         },
         onPeerStateChange: handlePeerConnectionStateChange,
-        onIceLog: (entry) => {
-          store.appendIceLog(entry);
-        },
+        onIceLog: () => {},
       });
       roomRef.current = room;
 
@@ -383,7 +357,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
               onPeerMessage: (peerId, msg) => handleIncomingDataMessage(peerId, msg),
               onPeerBinaryMessage: (peerId, buf) => handleIncomingBinaryMessage(peerId, buf),
               onPeerStateChange: handlePeerConnectionStateChange,
-              onIceLog: (entry) => store.appendIceLog(entry),
+              onIceLog: () => {},
             });
           }
 
@@ -393,7 +367,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           } else {
             store.setRoomStatus('connecting');
           }
-          store.appendIceLog('// [Signaling] Connected to signaling channel.');
           
           if (store.roomStatus === 'reconnecting') {
             toast.success('Signaling connection restored.');
@@ -401,9 +374,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           }
         } else if (state === 'reconnecting') {
           store.setRoomStatus('reconnecting');
-            store.appendIceLog('// [Signaling Error] Lost connection to signaling. Reconnecting...');
-            
-            failAllFileTransfers();
+          failAllFileTransfers();
           
           typingTimersRef.current.forEach((t) => clearTimeout(t));
           typingTimersRef.current.clear();
@@ -436,7 +407,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         store.setSignalingDriverName(signaling.getActiveDriverName());
       } catch (err) {
         console.error('Signaling connection failure:', err);
-        store.appendIceLog('// [Signaling] Failed to connect signaling server.');
         if (active) {
           store.setRoomStatus('failed');
           toast.error('Unable to connect to signaling.');
@@ -444,7 +414,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             id: generateId(),
             roomId,
             type: 'system',
-              text: '> signaling failed. unable to reach server.',
+            text: 'signaling failed. unable to reach server.',
             sender: 'System',
             senderId: 'system',
             ts: Date.now(),
@@ -455,18 +425,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     }
 
     init();
-
-    // Stats fetching loop
-    statsIntervalRef.current = setInterval(async () => {
-      const room = roomRef.current;
-      if (room && room.peers.size > 0) {
-        const firstPeer = Array.from(room.peers.values())[0];
-        if (firstPeer) {
-          const stats = await firstPeer.getStats();
-          store.setConnectionStats(stats);
-        }
-      }
-    }, 2000);
 
     const cleanupInterval = setInterval(() => {
       cleanupExpiredMessages();
@@ -521,7 +479,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
     switch (msg.type) {
       case 'room-joined':
-        store.appendIceLog(`// [Signaling] Joined room. Existing peers: ${msg.existingPeers?.join(', ') || 'None'}`);
         const isLocalHost = !msg.existingPeers || msg.existingPeers.length === 0;
 
         if (store.room) {
@@ -575,7 +532,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         break;
 
       case 'peer-joined':
-        store.appendIceLog(`// [Signaling] Peer ${msg.peerId} entered signaling channel.`);
         store.setRoomStatus('connecting');
         
         const isInitiator = myPeerId < msg.peerId;
@@ -594,9 +550,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
       case 'offer':
         if (msg.toPeer === myPeerId) {
-          store.appendIceLog(`// [Signaling] Received WebRTC offer from ${msg.fromPeer}.`);
-          store.setRemoteSdp(msg.sdp.sdp || '');
-
           let rxPeer = room.peers.get(msg.fromPeer);
           if (!rxPeer) {
             store.addPeer({
@@ -609,7 +562,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           }
           
           const answer = await rxPeer.handleOffer(msg.sdp);
-          store.setLocalSdp(answer.sdp || '');
 
           signalingRef.current?.send({
             type: 'answer',
@@ -622,8 +574,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
       case 'answer':
         if (msg.toPeer === myPeerId) {
-          store.appendIceLog(`// [Signaling] Received WebRTC answer from ${msg.fromPeer}.`);
-          store.setRemoteSdp(msg.sdp.sdp || '');
           const txPeer = room.peers.get(msg.fromPeer);
           if (txPeer) {
             await txPeer.handleAnswer(msg.sdp);
@@ -638,8 +588,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         break;
 
       case 'peer-left':
-        store.appendIceLog(`// [Signaling] Peer ${msg.peerId} disconnected.`);
-        
         const peerObj = store.peers.get(msg.peerId);
         const name = peerObj?.displayName || msg.peerId.substring(0, 8);
 
@@ -1183,16 +1131,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     }
   }, [hasConnectedPeers, displayName, myPeerId]);
 
-  const handleManualRefreshStats = async () => {
-    const room = roomRef.current;
-    if (room && room.peers.size > 0) {
-      const firstPeer = Array.from(room.peers.values())[0];
-      if (firstPeer) {
-        const stats = await firstPeer.getStats();
-        store.setConnectionStats(stats);
-      }
-    }
-  };
 
   const isInputDisabled = !hasConnectedPeers;
 
@@ -1208,6 +1146,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         roomId={roomId}
         onToggleChannelSidebar={() => setShowChannelSidebar(!showChannelSidebar)}
         onToggleMembersList={() => setShowMembersList(!showMembersList)}
+        onOpenManualPairing={() => setShowManualPairing(true)}
       />
 
       {/* Middle row — 3 panel layout */}
@@ -1232,9 +1171,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
         {/* Center Panel */}
         <main className="flex flex-col flex-1 overflow-hidden bg-base relative">
-          <div className="px-3 pt-2 pb-1 bg-surface border-b border-border">
-            <PeerStatus />
-          </div>
+          <PeerStatus />
 
           {allPeersFailedICE && (
             <div className="bg-decay/10 border-b border-decay/30 px-4 py-2 flex items-center justify-between text-xs font-mono text-decay select-none">
@@ -1306,39 +1243,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         )}
       </div>
 
-      {/* Developer Dashboard slide-out */}
-      {store.devModeEnabled && <DevPanel onRefreshStats={handleManualRefreshStats} />}
-
       {/* Keyboard Shortcuts Modal */}
       {showShortcutsModal && (
-        <div className="fixed inset-0 z-50 bg-bg-base/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-[340px] bg-bg-surface border border-border rounded-md p-5 relative select-none font-mono">
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="w-full max-w-[340px] bg-surface border border-border rounded p-5 relative select-none font-sans">
             <button
               onClick={() => setShowShortcutsModal(false)}
-              className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
+              className="absolute top-4 right-4 text-text-muted hover:text-text-primary transition-colors focus:outline-none"
               aria-label="Close shortcuts modal"
             >
               <X className="w-4 h-4" />
             </button>
-            <h3 className="type-uppercase-label text-fg-muted mb-4">
+            <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-4">
               Keyboard Shortcuts
             </h3>
-            <div className="space-y-2.5 text-caption text-fg-primary">
-              <div className="flex justify-between border-b border-border/40 pb-1.5">
+            <div className="space-y-2.5 text-xs text-text-primary">
+              <div className="flex justify-between border-b border-border pb-1.5">
                 <span>Focus Input</span>
-                <span className="text-fg-primary bg-bg-active px-1.5 rounded-sm">Ctrl + K</span>
+                <span className="font-mono text-text-secondary bg-elevated px-1.5 rounded">Ctrl + K</span>
               </div>
-              <div className="flex justify-between border-b border-border/40 pb-1.5">
-                <span>Dev Panel</span>
-                <span className="text-fg-primary bg-bg-active px-1.5 rounded-sm">Ctrl + Shift + D</span>
-              </div>
-              <div className="flex justify-between border-b border-border/40 pb-1.5">
+              <div className="flex justify-between border-b border-border pb-1.5">
                 <span>Show Shortcuts</span>
-                <span className="text-fg-primary bg-bg-active px-1.5 rounded-sm">Ctrl + /</span>
+                <span className="font-mono text-text-secondary bg-elevated px-1.5 rounded">Ctrl + /</span>
               </div>
               <div className="flex justify-between">
                 <span>Dismiss modal</span>
-                <span className="text-fg-primary bg-bg-active px-1.5 rounded-sm">ESC</span>
+                <span className="font-mono text-text-secondary bg-elevated px-1.5 rounded">ESC</span>
               </div>
             </div>
           </div>

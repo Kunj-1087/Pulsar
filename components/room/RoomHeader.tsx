@@ -1,34 +1,35 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Check, QrCode, Share2, Terminal, Users, X, Lock, ShieldAlert, Radio, Shield, Menu } from 'lucide-react';
+import { Copy, Check, QrCode, Share2, Users, MoreVertical, Menu, WifiOff, QrCode as QrIcon } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
-import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
-import { isOfflineMode } from '../../lib/utils';
-import { SecurityCenter } from './SecurityCenter';
+import { useNetworkStatus } from '../../lib/useNetworkStatus';
 
 interface RoomHeaderProps {
   roomId: string;
   onToggleChannelSidebar?: () => void;
   onToggleMembersList?: () => void;
+  onOpenManualPairing?: () => void;
 }
 
 export const RoomHeader: React.FC<RoomHeaderProps> = ({
   roomId,
   onToggleChannelSidebar,
   onToggleMembersList,
+  onOpenManualPairing,
 }) => {
-  const { peers, devModeEnabled, toggleDevMode, reset, setRoomStatus, channels, activeChannelId } = useChatStore();
+  const { peers, channels, activeChannelId } = useChatStore();
+  const isOnline = useNetworkStatus();
+
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
-  const [offlineMode, setOfflineMode] = useState(false);
-
-  const [identity, setIdentity] = useState<{ handle: string; peerColor: string } | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [showSecurityCenter, setShowSecurityCenter] = useState(false);
+  const [identity, setIdentity] = useState<{ handle: string; peerColor: string } | null>(null);
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -38,333 +39,260 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
           setIdentity(JSON.parse(saved));
         } catch {}
       }
-      setOfflineMode(isOfflineMode());
     }
   }, []);
 
-  const confirmReset = () => {
-    setRoomStatus('closing');
-    localStorage.removeItem('quark_identity');
-    localStorage.removeItem('quark-displayName');
-    reset();
-    setRoomStatus('closed');
-    window.location.href = '/';
-  };
-
-  // Compute invite link
-  const inviteLink = typeof window !== 'undefined'
-    ? `${window.location.origin}/?room=${roomId}`
-    : `https://quark.chat/?room=${roomId}`;
-
-  const handleCopyCode = async () => {
-    try {
-      await navigator.clipboard.writeText(roomId);
-      setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2000);
-    } catch (e) {
-      console.error('Failed to copy room code:', e);
-    }
-  };
-
-  const handleCopyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(inviteLink);
-      setCopiedLink(true);
-      setTimeout(() => setCopiedLink(false), 2000);
-    } catch (e) {
-      console.error('Failed to copy invite link:', e);
-    }
-  };
-
-  const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: 'Quark — Chat without the middle',
-          text: `Join my peer-to-peer chat. Room code: ${roomId}`,
-          url: inviteLink,
-        });
-      } catch {
-        // Ignore share errors/cancellations
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
       }
-    } else {
-      handleCopyLink();
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(roomId);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 1500);
+  };
+
+  const handleShareLink = () => {
+    const inviteUrl = `${window.location.origin}/room/${roomId}`;
+    navigator.clipboard.writeText(inviteUrl);
+    setCopiedLink(true);
+    setShowDropdown(false);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  const handleResetIdentity = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('quark_identity');
+      window.location.reload();
     }
   };
+
+  const activeChannel = channels.find((c) => c.id === activeChannelId);
+  const activeChannelName = activeChannel ? activeChannel.name : 'general';
 
   const peerList = Array.from(peers.values());
-  const connectedPeers = peerList.filter(
-    (p) => p.connectionState === 'connected'
-  );
-  const connectedPeersCount = connectedPeers.length;
-
-  const hasPeers = connectedPeersCount > 0;
-  const allPeersE2EE = hasPeers && connectedPeers.every((p) => p.e2eeStatus === 'established');
-  const anyPeerE2EEFailed = connectedPeers.some((p) => p.e2eeStatus === 'failed');
-
-  const activeChannel = channels.find(c => c.id === activeChannelId);
-  const activeChannelName = activeChannel ? activeChannel.name : 'general';
+  const connectedPeersCount = peerList.filter((p) => p.connectionState === 'connected').length;
 
   return (
     <>
-      <header className="h-13 bg-bg-base px-4 flex items-center justify-between select-none">
-        {/* Left: Hamburger menu (mobile) + Wordmark */}
-        <div className="flex items-center gap-2">
+      <header className="h-[52px] bg-surface border-b border-border px-4 flex items-center justify-between select-none shrink-0 font-sans z-30 relative">
+        {/* LEFT SECTION */}
+        <div className="flex items-center gap-3">
           {onToggleChannelSidebar && (
             <button
+              type="button"
               onClick={onToggleChannelSidebar}
               className="md:hidden text-text-muted hover:text-text-primary p-1 focus:outline-none"
-              aria-label="Toggle Channels"
               title="Toggle Channels"
             >
               <Menu className="w-5 h-5" />
             </button>
           )}
-          <span className="type-wordmark text-sm text-fg-primary group cursor-default">
-            q<span className="group-hover:text-quantum transition-colors duration-300 ease-standard">ua</span>rk
-          </span>
-          <span className="hidden md:inline type-uppercase-label text-fg-muted px-1.5 py-0.5 border border-border rounded-sm">
-            v1.0-P2P
-          </span>
-          {hasPeers && (
-            allPeersE2EE ? (
-              <span className="flex items-center gap-1 type-uppercase-label text-nebula border border-nebula/30 bg-nebula/10 rounded px-1.5 py-0.5" title="End-to-end encrypted">
-                <Lock className="w-2.5 h-2.5" />
-                <span>E2EE</span>
-              </span>
-            ) : anyPeerE2EEFailed ? (
-              <span className="flex items-center gap-1 type-uppercase-label text-redshift border border-redshift/30 bg-redshift/10 rounded px-1.5 py-0.5" title="E2EE key agreement failed">
-                <ShieldAlert className="w-2.5 h-2.5" />
-                <span>E2EE ALERT</span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 type-uppercase-label text-accretion border border-accretion/30 bg-accretion/10 rounded px-1.5 py-0.5" title="Encrypting channels...">
-                <Lock className="w-2.5 h-2.5" />
-                <span>SECURING</span>
-              </span>
-            )
-          )}
-          {offlineMode && (
-            <span className="flex items-center gap-1 type-uppercase-label text-pulsar border border-pulsar/30 bg-pulsar/10 rounded px-1.5 py-0.5" title="Offline LAN mode">
-              <Radio className="w-2.5 h-2.5" />
-              <span>OFFLINE LAN</span>
-            </span>
-          )}
-        </div>
 
-        {/* Center: Active channel & Room code display */}
-        <div className="flex items-center gap-4">
-          <span className="text-text-secondary font-mono text-sm font-semibold">
+          <span className="text-white text-base font-bold tracking-tight">
+            quark
+          </span>
+
+          <div className="w-px h-4 bg-border" />
+
+          <span className="text-white text-sm font-medium truncate max-w-[100px] sm:max-w-[140px]">
             # {activeChannelName}
           </span>
-          {identity && (
-            <div className="hidden sm:flex items-center gap-2">
-              <span
-                className="w-2 h-2 rounded-full shrink-0 animate-[quark-message-in-system_250ms_ease-in_forwards]"
-                style={{ backgroundColor: identity.peerColor }}
-              />
-              <span className="type-peer-name text-fg-primary select-none">
-                @{identity.handle}
-              </span>
-              <button
-                onClick={() => setShowResetConfirm(true)}
-                className="text-caption font-sans text-fg-muted hover:text-fg-primary hover:underline cursor-pointer focus:outline-none"
-              >
-                Reset identity
-              </button>
-            </div>
-          )}
+        </div>
 
-          <div className="flex items-center bg-bg-elevated border border-border rounded px-3 py-1 gap-2.5">
-            <span className="hidden sm:inline type-uppercase-label text-fg-muted">
-              Room Code
-            </span>
-            <span className="type-hero-numeral text-fg-primary text-sm font-bold select-all">
-              {roomId}
-            </span>
+        {/* CENTER SECTION */}
+        <div className="flex items-center gap-2 relative">
+          <span className="hidden sm:inline-block text-[10px] text-text-muted font-sans font-medium uppercase tracking-widest">
+            ROOM
+          </span>
+          <span className="font-mono text-xs text-text-primary tracking-widest font-semibold">
+            {roomId}
+          </span>
+
+          <div className="relative flex items-center">
             <button
+              type="button"
               onClick={handleCopyCode}
-              className="text-fg-muted hover:text-fg-primary transition-colors focus:outline-none p-1.5 md:p-0"
-              title="Copy Code"
-              aria-label="Copy Room Code"
+              className="text-text-muted hover:text-text-primary p-1 transition-colors focus:outline-none"
+              title="Copy Room Code"
             >
               {copiedCode ? (
-                <Check className="w-3.5 h-3.5 text-photon" />
+                <Check className="w-3.5 h-3.5 text-accent" />
               ) : (
                 <Copy className="w-3.5 h-3.5" />
               )}
             </button>
+            {copiedCode && (
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-overlay border border-border text-text-primary text-[11px] font-sans px-2 py-0.5 rounded shadow pointer-events-none whitespace-nowrap">
+                Copied!
+              </div>
+            )}
           </div>
+
+          <button
+            type="button"
+            onClick={() => setShowQRModal(true)}
+            className="text-text-secondary hover:text-text-primary p-1 transition-colors focus:outline-none"
+            title="Show QR Code"
+          >
+            <QrCode className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Right: Actions & Badges */}
-        <div className="flex items-center gap-2">
+        {/* RIGHT SECTION */}
+        <div className="flex items-center gap-3">
+          {/* Network & Peer Connectivity Badge */}
+          {!isOnline ? (
+            <div className="flex items-center gap-1.5 bg-elevated border border-border px-2 py-0.5 rounded text-[11px] font-sans text-text-secondary">
+              <WifiOff className="w-3 h-3 text-text-muted shrink-0" />
+              <span className="hidden sm:inline">Offline — viewing local history</span>
+              <span className="sm:hidden">Offline</span>
+            </div>
+          ) : connectedPeersCount === 0 ? (
+            <div className="flex items-center gap-1.5 bg-elevated/60 border border-border px-2 py-0.5 rounded text-[11px] font-sans text-text-muted">
+              <span className="w-1.5 h-1.5 rounded-full bg-text-muted shrink-0" />
+              <span className="hidden sm:inline">No peers connected</span>
+              <span className="sm:hidden">0 peers</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 bg-accent-muted/40 border border-accent-muted px-2 py-0.5 rounded text-[11px] font-sans text-text-primary">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
+              <span>Connected — {connectedPeersCount} {connectedPeersCount === 1 ? 'peer' : 'peers'}</span>
+            </div>
+          )}
+
+          {/* User Identity */}
+          {identity && (
+            <div className="hidden lg:flex items-center gap-1.5 text-text-secondary text-xs">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: identity.peerColor || 'var(--accent)' }}
+              />
+              <span className="truncate max-w-[100px]">@{identity.handle}</span>
+            </div>
+          )}
+
           {/* Mobile Members Toggle Button */}
           {onToggleMembersList && (
             <button
+              type="button"
               onClick={onToggleMembersList}
               className="md:hidden text-text-muted hover:text-text-primary p-1 focus:outline-none"
-              aria-label="Toggle Members List"
-              title="Toggle Members List"
+              title="Toggle Members"
             >
               <Users className="w-5 h-5" />
             </button>
           )}
 
-          {/* Peer Count Badge */}
-          <div className="hidden md:flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2.5 h-8 bg-bg-surface border border-border rounded font-mono text-xs text-fg-primary">
-              <Users className="w-3.5 h-3.5 text-fg-subtle" />
-              <span>{connectedPeersCount}</span>
-            </div>
-            {connectedPeersCount >= 5 && (
-              <span className="type-uppercase-label text-pulse">
-                Room full
-              </span>
+          {/* Overflow Menu */}
+          <div className="relative" ref={dropdownRef}>
+            <button
+              type="button"
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="text-text-muted hover:text-text-primary p-1 transition-colors focus:outline-none"
+              title="More options"
+            >
+              <MoreVertical className="w-4 h-4" />
+            </button>
+
+            {showDropdown && (
+              <div className="absolute right-0 top-full mt-1 w-44 bg-overlay border border-border rounded shadow-lg py-1 z-50 text-xs font-sans">
+                <button
+                  type="button"
+                  onClick={handleShareLink}
+                  className="w-full text-left px-3 py-1.5 text-text-primary hover:bg-elevated flex items-center justify-between"
+                >
+                  <span>Invite</span>
+                  <Share2 className="w-3.5 h-3.5 text-text-muted" />
+                </button>
+
+                {onOpenManualPairing && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDropdown(false);
+                      onOpenManualPairing();
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-text-primary hover:bg-elevated flex items-center justify-between"
+                  >
+                    <span>Connect Manually (QR)</span>
+                    <QrIcon className="w-3.5 h-3.5 text-accent" />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDropdown(false);
+                    setShowResetConfirm(true);
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-accent hover:bg-elevated"
+                >
+                  Reset Identity
+                </button>
+              </div>
             )}
           </div>
-
-          {/* QR Trigger */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowQRModal(true)}
-            className="w-11 h-11 md:w-8 md:h-8 p-0 flex items-center justify-center animate-[quark-message-in-system_250ms_ease-in_forwards]"
-            title="Show QR Code"
-            aria-label="Show QR Code"
-          >
-            <QrCode className="w-4 h-4 text-fg-primary" />
-          </Button>
-
-          {/* Share Trigger */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleShare}
-            className="w-11 h-11 md:w-8 md:h-8 p-0 flex items-center justify-center"
-            title="Share Room Link"
-            aria-label="Share Room Link"
-          >
-            {copiedLink ? (
-              <Check className="w-4 h-4 text-photon" />
-            ) : (
-              <Share2 className="w-4 h-4 text-fg-primary" />
-            )}
-          </Button>
-
-          {/* Local Offline Pairing */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => window.dispatchEvent(new Event('open-manual-pairing'))}
-            className="w-11 h-11 md:w-8 md:h-8 p-0 border border-dim flex items-center justify-center"
-            title="Local Offline Pairing"
-            aria-label="Local Offline Pairing"
-          >
-            <Radio className="w-4 h-4 text-accretion" />
-          </Button>
-
-          {/* Security Center */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowSecurityCenter(true)}
-            className="w-11 h-11 md:w-8 md:h-8 p-0 flex items-center justify-center"
-            title="Security Center"
-            aria-label="Open Security Center"
-          >
-            <Shield className="w-4 h-4 text-fg-primary" />
-          </Button>
-
-          {/* Dev mode Toggle */}
-          <Button
-            variant={devModeEnabled ? 'primary' : 'ghost'}
-            size="sm"
-            onClick={toggleDevMode}
-            className="w-11 h-11 md:w-8 md:h-8 p-0 flex items-center justify-center"
-            title="Toggle Developer Diagnostics"
-            aria-label="Toggle Developer Panel"
-          >
-            <Terminal className="w-4 h-4" />
-          </Button>
         </div>
       </header>
 
-      {/* QR Code Modal Overlay */}
+      {/* QR Modal */}
       {showQRModal && (
-        <div className="fixed inset-0 z-50 bg-bg-base/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-[340px] bg-bg-surface border border-border rounded-md p-6 relative max-h-[90vh] overflow-y-auto">
-            <button
-              onClick={() => setShowQRModal(false)}
-              className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none p-2.5 md:p-0"
-              aria-label="Close modal"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="text-center mt-2">
-              <h3 className="type-uppercase-label text-fg-muted mb-4">
-                Scan to Join Room
-              </h3>
-              
-              {/* QR Code Canvas */}
-              <div className="bg-fg-primary p-4 inline-block rounded-sm mb-4">
-                <QRCodeSVG
-                  value={inviteLink}
-                  size={200}
-                  bgColor="#f5f5f5"
-                  fgColor="#0a0a0a"
-                  level="M"
-                />
-              </div>
-
-              <div className="space-y-3">
-                <p className="text-small font-sans text-fg-muted leading-relaxed">
-                  Scan with another device to join this room.
-                </p>
-                <div className="flex gap-1.5">
-                  <Input
-                    readOnly
-                    value={inviteLink}
-                    className="h-11 md:h-8 text-small md:text-caption font-mono select-all bg-bg-elevated"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-11 md:h-8 text-small md:text-xs px-4"
-                    onClick={handleCopyLink}
-                  >
-                    {copiedLink ? 'Copied' : 'Copy'}
-                  </Button>
-                </div>
-              </div>
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-surface border border-border p-6 rounded max-w-xs w-full flex flex-col items-center gap-4 text-center font-sans">
+            <h3 className="text-text-primary font-bold text-base">Scan Room QR</h3>
+            <div className="bg-white p-3 rounded">
+              <QRCodeSVG
+                value={`${typeof window !== 'undefined' ? window.location.origin : ''}/room/${roomId}`}
+                size={160}
+                bgColor="#FFFFFF"
+                fgColor="#000000"
+                level="M"
+              />
             </div>
+            <p className="text-text-secondary text-xs">
+              Scan with another device to join room <span className="font-mono text-text-primary">{roomId}</span> instantly.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowQRModal(false)}
+              className="w-full bg-elevated hover:bg-overlay border border-border text-text-primary text-xs py-2 rounded transition-colors"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
-      {/* Security Center Modal */}
-      {showSecurityCenter && (
-        <SecurityCenter onClose={() => setShowSecurityCenter(false)} />
-      )}
 
-      {/* Reset Confirmation Overlay Modal */}
-      {showResetConfirm && (              <div className="fixed inset-0 z-50 bg-bg-base/85 flex items-center justify-center p-4">
-          <div className="w-full max-w-[320px] bg-bg-surface border border-border rounded-md p-5 select-none animate-[quark-sdp-modal-in_200ms_cubic-bezier(0.16,1,0.3,1)_forwards]">
-            <p className="font-sans text-small text-fg-primary leading-normal mb-4">
-              This will clear your handle. You will need to pick a new one.
+      {/* Reset Identity Confirmation Modal */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="bg-surface border border-border p-5 rounded max-w-xs w-full flex flex-col gap-3 text-sans text-xs">
+            <h4 className="text-text-primary font-bold text-sm">Reset Identity?</h4>
+            <p className="text-text-secondary leading-relaxed">
+              This will clear your local handle and color assignments for this session.
             </p>
-            <div className="flex items-center justify-end gap-3 font-mono text-[11px]">
+            <div className="flex gap-2 justify-end mt-2">
               <button
+                type="button"
                 onClick={() => setShowResetConfirm(false)}
-                className="text-fg-muted hover:text-fg-primary hover:underline focus:outline-none"
+                className="px-3 py-1.5 bg-elevated hover:bg-overlay text-text-primary rounded border border-border"
               >
                 Cancel
               </button>
               <button
-                onClick={confirmReset}
-                className="bg-decay text-fg-primary px-3 py-1.5 rounded hover:bg-decay-hover font-medium transition-colors focus:outline-none"
+                type="button"
+                onClick={handleResetIdentity}
+                className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white font-medium rounded"
               >
-                Yes, reset
+                Reset
               </button>
             </div>
           </div>

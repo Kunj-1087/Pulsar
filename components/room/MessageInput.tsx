@@ -2,8 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Paperclip, Send, X, File, FileImage, FileText } from 'lucide-react';
-import { Button } from '../ui/Button';
-import { cn, formatBytes } from '../../lib/utils';
+import { formatBytes } from '../../lib/utils';
 import { toast } from '../../store/toastStore';
 import { useChatStore } from '../../store/chatStore';
 
@@ -16,7 +15,6 @@ interface MessageInputProps {
 }
 
 const MAX_CHAR_LIMIT = 64000;
-const WARNING_THRESHOLD = MAX_CHAR_LIMIT * 0.9; // 90% threshold to show counter
 
 export const MessageInput: React.FC<MessageInputProps> = ({
   onSendMessage,
@@ -25,16 +23,17 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   disabled = false,
   roomId,
 }) => {
-  const { replyingTo, setReplyingTo, peers } = useChatStore();
+  const { replyingTo, setReplyingTo, peers, channels, activeChannelId } = useChatStore();
   const [text, setText] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isFocused, setIsFocused] = useState(false);
-  const [isFlashing, setIsFlashing] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isTypingRef = useRef(false);
+
+  const activeChannel = channels.find((c) => c.id === activeChannelId);
+  const activeChannelName = activeChannel ? activeChannel.name : 'general';
 
   // Resolve replying handle
   let replyingHandle = replyingTo?.sender || '';
@@ -45,26 +44,20 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }
   }
 
-  // Load draft text on mount/room change, and autofocus input
+  // Auto-focus input on mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedDraft = sessionStorage.getItem(`quark_draft_${roomId}`);
-      if (savedDraft) {
-        setText(savedDraft);
-      }
-    }
     if (!disabled) {
       textareaRef.current?.focus();
     }
   }, [roomId, disabled]);
 
-  // Auto-resize the text input box based on content lines
+  // Auto-resize textarea (max 5 lines ~ 120px)
   useEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
 
     textarea.style.height = 'auto';
-    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 40), 120);
+    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 24), 120);
     textarea.style.height = `${nextHeight}px`;
   }, [text]);
 
@@ -72,9 +65,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     const val = e.target.value;
     if (val.length <= MAX_CHAR_LIMIT) {
       setText(val);
-      if (typeof window !== 'undefined') {
-        sessionStorage.setItem(`quark_draft_${roomId}`, val);
-      }
 
       if (val === '') {
         if (isTypingRef.current) {
@@ -106,23 +96,15 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const handleSend = () => {
     const trimmed = text.trim();
 
-    // 1. Send file if selected
     if (selectedFile && !disabled) {
       onSendFile(selectedFile);
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
 
-    // 2. Send text message if non-empty
     if (trimmed && !disabled) {
       onSendMessage(trimmed);
       setText('');
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem(`quark_draft_${roomId}`);
-      }
-
-      setIsFlashing(true);
-      setTimeout(() => setIsFlashing(false), 100);
 
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
@@ -134,7 +116,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       textareaRef.current?.focus();
     }
 
-    // Clear reply state after send
     if (replyingTo) {
       setReplyingTo(null);
     }
@@ -155,7 +136,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     const maxBytes = maxMb * 1024 * 1024;
 
     if (file.size > maxBytes) {
-      toast.error(`File too large. Maximum size is ${maxMb}MB.`, { title: 'File Limit' });
+      toast.error(`File too large. Maximum size is ${maxMb}MB.`);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -174,48 +155,23 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleBlur = () => {
-    setIsFocused(false);
-    if (isTypingRef.current) {
-      isTypingRef.current = false;
-      onTyping(false);
-    }
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      if (isTypingRef.current) {
-        onTyping(false);
-      }
-    };
-  }, [onTyping]);
-
-  const characterCount = text.length;
-  const showCounter = characterCount >= WARNING_THRESHOLD;
   const canSend = !disabled && (!!text.trim() || !!selectedFile);
 
   return (
-    <div className="border-t border-dim bg-void flex flex-col relative select-none">
+    <div className="bg-surface border-t border-border flex flex-col font-sans select-none shrink-0">
       {/* Reply Preview Bar */}
       {replyingTo && (
-        <div className="bg-accent-muted border-t border-accent px-4 py-2 flex items-center justify-between text-xs font-sans">
+        <div className="bg-accent-muted border-l-2 border-accent px-4 py-2 flex items-center justify-between text-xs">
           <span className="text-text-secondary truncate pr-2">
-            Replying to @{replyingHandle}: {replyingTo.text?.substring(0, 60)}
+            Replying to @{replyingHandle}: {replyingTo.text?.substring(0, 80)}
           </span>
           <button
             type="button"
             onClick={() => setReplyingTo(null)}
-            className="text-text-muted hover:text-accent focus:outline-none p-0.5"
+            className="text-text-muted hover:text-text-primary focus:outline-none p-0.5"
             title="Cancel reply"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       )}
@@ -223,7 +179,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       {/* File Preview Chip */}
       {selectedFile && (
         <div className="px-4 pt-2">
-          <div className="bg-elevated border border-border rounded px-3 py-2 flex items-center justify-between text-xs">
+          <div className="bg-elevated border border-border rounded px-2.5 py-1.5 flex items-center justify-between text-[13px] text-text-secondary">
             <div className="flex items-center gap-2 truncate">
               {selectedFile.type.startsWith('image/') ? (
                 <FileImage className="w-4 h-4 text-accent shrink-0" />
@@ -238,89 +194,64 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             <button
               type="button"
               onClick={clearSelectedFile}
-              className="text-text-muted hover:text-accent focus:outline-none p-0.5"
+              className="text-text-muted hover:text-text-primary focus:outline-none p-0.5"
               title="Remove file"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
       )}
 
-      <div className="px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] flex items-end gap-3.5">
-        {/* Attachment Button */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          className="hidden"
-          disabled={disabled}
-        />
-        <Button
-          variant="ghost"
-          onClick={triggerFileSelect}
-          disabled={disabled}
-          className="w-11 h-11 md:w-10 md:h-10 p-0 rounded-full shrink-0 border border-dim hover:bg-surface-hover hover:border-border-strong flex items-center justify-center"
-          title="Attach file (Max 100MB)"
-          aria-label="Attach file"
-        >
-          <Paperclip className="w-5 h-5 text-text-muted hover:text-accent transition-colors" />
-        </Button>
+      {/* Inner Input Row */}
+      <div className="px-4 py-3">
+        <div className="bg-elevated border border-border focus-within:border-accent rounded px-3 py-2 flex items-center gap-2 transition-colors">
+          {/* File Attachment Button */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            className="hidden"
+            disabled={disabled}
+          />
+          <button
+            type="button"
+            onClick={triggerFileSelect}
+            disabled={disabled}
+            className="text-text-muted hover:text-text-primary transition-colors focus:outline-none shrink-0 p-0.5"
+            title="Attach file (Max 100MB)"
+          >
+            <Paperclip className="w-4 h-4" />
+          </button>
 
-        {/* Text Area Input */}
-        <div className="flex-1 min-w-0 relative">
+          {/* Textarea */}
           <textarea
             ref={textareaRef}
             rows={1}
             value={text}
             onChange={handleTextChange}
             onKeyDown={handleKeyDown}
-            onFocus={() => setIsFocused(true)}
-            onBlur={handleBlur}
-            placeholder={disabled ? "waiting for peers..." : "type a message"}
+            placeholder={disabled ? "Waiting for peers..." : `Message #${activeChannelName}`}
             disabled={disabled}
-            className={cn(
-              "w-full bg-surface border border-dim text-fg-primary placeholder:text-fg-subtle font-sans text-body rounded px-3 py-2 resize-none max-h-[120px] focus:outline-none focus:border-pulsar focus:ring-1 focus:ring-pulsar/40 disabled:opacity-50 disabled:cursor-not-allowed leading-normal transition-opacity duration-100",
-              isFlashing && "opacity-60"
-            )}
-            style={{ height: '40px' }}
+            className="w-full bg-transparent text-text-primary placeholder:text-text-muted text-[14px] font-sans resize-none max-h-[120px] focus:outline-none leading-normal"
+            style={{ height: '24px' }}
           />
-          {isFocused && !text && !disabled && (
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-body font-mono text-pulsar pointer-events-none animate-cursor-blink">
-              █
-            </span>
-          )}
-          <span
-            className={cn(
-              "absolute bottom-0 left-0 w-full h-[1.5px] bg-pulsar origin-center transition-transform duration-150 ease-standard pointer-events-none",
-              isFocused ? "scale-x-100" : "scale-x-0"
-            )}
-          />
-          {showCounter && (
-            <span className="absolute bottom-2.5 right-3.5 text-micro font-mono text-accretion select-none bg-void/80 px-1 rounded border border-dim">
-              {characterCount} / {MAX_CHAR_LIMIT}
-            </span>
-          )}
-        </div>
 
-        {/* Send Button */}
-        <Button
-          onClick={handleSend}
-          disabled={!canSend}
-          className={cn(
-            "w-11 h-11 md:w-10 md:h-10 p-0 rounded-full shrink-0 transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] border border-transparent flex items-center justify-center",
-            canSend
-              ? "bg-accent text-white hover:bg-accent-hover shadow-[0_0_16px_rgba(229,9,20,0.3)] font-bold"
-              : "bg-surface text-fg-subtle border-dim cursor-not-allowed"
-          )}
-          title="Send message"
-          aria-label="Send message"
-        >
-          <Send
-            className="w-4 h-4 transition-transform duration-150 ease-standard"
-            style={canSend ? { transform: 'rotate(15deg)' } : undefined}
-          />
-        </Button>
+          {/* Send Button (32px x 32px rounded 4px) */}
+          <button
+            type="button"
+            onClick={handleSend}
+            disabled={!canSend}
+            className={`w-8 h-8 rounded flex items-center justify-center shrink-0 transition-colors ${
+              canSend
+                ? 'bg-accent text-white hover:bg-accent-hover cursor-pointer'
+                : 'bg-overlay text-text-muted cursor-not-allowed'
+            }`}
+            title="Send message"
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );

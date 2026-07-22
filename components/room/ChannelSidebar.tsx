@@ -24,9 +24,14 @@ export const ChannelSidebar: React.FC = () => {
 
   const isHost = room?.isHost ?? false;
 
+  // Fix: Deduplicate channels by id
+  const uniqueChannels = channels.filter(
+    (c, i, arr) => arr.findIndex((x) => x.id === c.id) === i
+  );
+
   // On mount, auto-create #general if empty
   useEffect(() => {
-    if (channels.length === 0 && room?.roomId) {
+    if (uniqueChannels.length === 0 && room?.roomId) {
       const generalChannel: Channel = {
         id: generateId(),
         roomId: room.roomId,
@@ -41,7 +46,7 @@ export const ChannelSidebar: React.FC = () => {
         broadcastChannelCreate(generalChannel);
       }
     }
-  }, [channels.length, room?.roomId, isHost, myPeerId, addChannel, setActiveChannel]);
+  }, [uniqueChannels.length, room?.roomId, isHost, myPeerId, addChannel, setActiveChannel]);
 
   const handleCreateChannel = () => {
     const cleanName = newChannelName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
@@ -55,16 +60,11 @@ export const ChannelSidebar: React.FC = () => {
       createdBy: myPeerId || 'user',
     };
 
-    // 1. Add to store
     addChannel(newChannel);
-    // 2. Persist to DB
     createChannel(newChannel);
-    // 3. Broadcast
     broadcastChannelCreate(newChannel);
-    // 4. Set as active
     setActiveChannel(newChannel.id);
 
-    // Reset input
     setNewChannelName('');
     setIsAdding(false);
   };
@@ -73,98 +73,93 @@ export const ChannelSidebar: React.FC = () => {
     e.stopPropagation();
     if (channel.name === 'general') return;
 
-    // 1. Remove from store
     removeChannel(channel.id);
-    // 2. Delete from DB
     deleteChannel(channel.id);
-    // 3. Broadcast
     broadcastChannelDelete(channel.id);
   };
 
   return (
-    <aside className="w-60 flex-shrink-0 bg-surface border-r border-border h-full flex flex-col justify-between p-4 select-none">
-      <div className="flex-1 overflow-y-auto">
-        <div className="font-mono text-[11px] text-text-muted uppercase tracking-widest mb-3">
-          CHANNELS
-        </div>
-
-        <div className="space-y-1">
-          {channels.map((ch) => {
-            const isActive = ch.id === activeChannelId;
-
-            return (
-              <div
-                key={ch.id}
-                onClick={() => setActiveChannel(ch.id)}
-                className={`group flex items-center justify-between px-2.5 py-1.5 rounded text-sm cursor-pointer transition-colors ${
-                  isActive
-                    ? 'border-l-2 border-accent bg-elevated text-primary font-medium'
-                    : 'text-text-secondary hover:bg-elevated'
-                }`}
-              >
-                <div className="flex items-center gap-1.5 truncate">
-                  <span className="text-text-muted font-mono">#</span>
-                  <span className="truncate">{ch.name}</span>
-                </div>
-
-                {isHost && ch.name !== 'general' && (
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteChannel(e, ch)}
-                    className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-accent p-0.5 transition-all focus:outline-none"
-                    title="Delete channel"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
+    <aside className="w-[240px] flex-shrink-0 bg-surface border-r border-border h-full flex flex-col font-sans select-none overflow-y-auto">
+      {/* Section Header */}
+      <div className="px-3 pt-4 pb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-text-muted">
+        CHANNELS
       </div>
 
-      {/* Add channel button / inline input */}
-      <div className="pt-3 border-t border-border">
-        {isAdding ? (
-          <div className="flex items-center gap-1">
-            <span className="text-text-muted font-mono text-sm pl-1">#</span>
-            <input
-              type="text"
-              autoFocus
-              value={newChannelName}
-              onChange={(e) => setNewChannelName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateChannel();
-                if (e.key === 'Escape') setIsAdding(false);
-              }}
-              placeholder="channel-name"
-              className="w-full bg-elevated border border-border focus:border-accent text-primary text-xs px-2 py-1 rounded outline-none font-mono"
-            />
+      {/* Channel List Items */}
+      <div className="flex-1 space-y-0.5">
+        {uniqueChannels.map((ch) => {
+          const isActive = ch.id === activeChannelId;
+
+          return (
+            <div
+              key={ch.id}
+              onClick={() => setActiveChannel(ch.id)}
+              className={`group relative flex items-center h-8 px-2 mx-1 rounded text-sm cursor-pointer transition-colors ${
+                isActive
+                  ? 'bg-elevated text-text-primary font-medium border-l-2 border-accent'
+                  : 'text-text-secondary hover:bg-elevated hover:text-text-primary'
+              }`}
+            >
+              <span className="text-text-muted font-normal mr-1.5">#</span>
+              <span className="truncate text-[14px]">{ch.name}</span>
+
+              {isHost && ch.name !== 'general' && (
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteChannel(e, ch)}
+                  className="opacity-0 group-hover:opacity-100 absolute right-2 text-text-muted hover:text-accent p-1 transition-all focus:outline-none"
+                  title="Delete channel"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Add Channel Button / Inline Input */}
+        <div className="pt-2 px-1">
+          {isAdding ? (
+            <div className="flex items-center gap-1 bg-elevated border border-border focus-within:border-accent rounded px-2 py-1">
+              <span className="text-text-muted text-xs">#</span>
+              <input
+                type="text"
+                autoFocus
+                value={newChannelName}
+                onChange={(e) => setNewChannelName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateChannel();
+                  if (e.key === 'Escape') setIsAdding(false);
+                }}
+                placeholder="channel-name"
+                className="w-full bg-transparent text-text-primary text-[13px] font-sans outline-none placeholder:text-text-muted"
+              />
+              <button
+                type="button"
+                onClick={handleCreateChannel}
+                className="text-text-muted hover:text-text-primary p-0.5 focus:outline-none"
+              >
+                <Check className="w-3.5 h-3.5 text-accent" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAdding(false)}
+                className="text-text-muted hover:text-text-primary p-0.5 focus:outline-none"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={handleCreateChannel}
-              className="text-text-muted hover:text-primary p-1 focus:outline-none"
+              onClick={() => setIsAdding(true)}
+              className="flex items-center gap-1.5 w-full h-8 px-2 text-[13px] text-text-muted hover:text-text-primary hover:bg-elevated rounded transition-colors"
             >
-              <Check className="w-4 h-4 text-accent" />
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Channel</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setIsAdding(false)}
-              className="text-text-muted hover:text-primary p-1 focus:outline-none"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setIsAdding(true)}
-            className="flex items-center gap-2 w-full px-2 py-1.5 text-xs font-mono text-text-muted hover:text-text-primary hover:bg-elevated rounded transition-colors"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Channel</span>
-          </button>
-        )}
+          )}
+        </div>
       </div>
     </aside>
   );

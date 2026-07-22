@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Message, Peer, Room, ConnectionStats, RoomConnectionStatus, Channel } from '../types';
+import { Message, Peer, Room, RoomConnectionStatus, Channel } from '../types';
 
 interface ChatStore {
   room: Room | null;
@@ -40,18 +40,6 @@ interface ChatStore {
   
   typingPeers: Set<string>;
   setTyping: (peerId: string, isTyping: boolean) => void;
-  
-  devModeEnabled: boolean;
-  toggleDevMode: () => void;
-  connectionStats: ConnectionStats | null;
-  setConnectionStats: (stats: ConnectionStats | null) => void;
-  iceLog: string[];
-  appendIceLog: (entry: string) => void;
-  clearIceLog: () => void;
-  localSdp: string | null;
-  setLocalSdp: (sdp: string | null) => void;
-  remoteSdp: string | null;
-  setRemoteSdp: (sdp: string | null) => void;
   
   signalingDriverName: 'Primary' | 'Backup (Ably)' | 'None';
   setSignalingDriverName: (name: 'Primary' | 'Backup (Ably)' | 'None') => void;
@@ -175,7 +163,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   setMessages: (messages) => set({ messages }),
   addMessage: (msg) => set((state) => {
-    // Avoid duplicate messages
     if (state.messages.some(m => m.id === msg.id)) {
       return {};
     }
@@ -231,24 +218,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     return { typingPeers: next };
   }),
   
-  // Set default dev mode state from env var
-  devModeEnabled: process.env.NEXT_PUBLIC_DEV_MODE === 'true',
-  toggleDevMode: () => set((state) => ({ devModeEnabled: !state.devModeEnabled })),
-  connectionStats: null,
-  setConnectionStats: (connectionStats) => set({ connectionStats }),
-  iceLog: [],
-  appendIceLog: (entry) => set((state) => {
-    // Keep last 100 entries to prevent memory growth
-    const nextLog = [...state.iceLog, entry];
-    if (nextLog.length > 100) nextLog.shift();
-    return { iceLog: nextLog };
-  }),
-  clearIceLog: () => set({ iceLog: [] }),
-  localSdp: null,
-  setLocalSdp: (localSdp) => set({ localSdp }),
-  remoteSdp: null,
-  setRemoteSdp: (remoteSdp) => set({ remoteSdp }),
-  
   signalingDriverName: 'None',
   setSignalingDriverName: (signalingDriverName) => set({ signalingDriverName }),
 
@@ -262,10 +231,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     messages: [],
     roomStatus: 'idle',
     typingPeers: new Set(),
-    connectionStats: null,
-    iceLog: [],
-    localSdp: null,
-    remoteSdp: null,
     signalingDriverName: 'None',
     outboxPendingIds: new Set(),
   }),

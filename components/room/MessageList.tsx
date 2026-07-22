@@ -340,8 +340,11 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, roomId }) =>
                 }}
               >
                 {item.type === 'date' && (
-                  <div className="w-full flex justify-center py-4 select-none">
-                    <span className="text-micro font-mono text-fg-muted px-2 py-0.5 border border-border bg-bg-elevated/40 rounded-sm">
+                  <div className="w-full flex items-center justify-center my-4 select-none relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-border" />
+                    </div>
+                    <span className="relative bg-base px-3 text-[11px] font-sans font-medium text-text-muted uppercase tracking-[0.08em]">
                       {item.dateStr}
                     </span>
                   </div>

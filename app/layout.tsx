@@ -1,31 +1,11 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
 import "./globals.css";
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GlobalListener } from '../components/GlobalListener';
 import { ToastContainer } from '../components/ui/ToastContainer';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { PWAInstallPrompt } from '../components/PWAInstallPrompt';
-
-// Display / Wordmark / Headings: JetBrains Mono
-// Stronger geometric character than Space Mono, supports tabular numerals and stylistic sets.
-// Use for wordmark, headings, timestamps, peer IDs, room codes, technical data.
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  weight: ['400', '500', '700'],
-  display: 'swap',
-});
-
-// Body / UI Text: Inter
-// Industry standard for interface text, excellent legibility at small sizes.
-// Use for message text, buttons, form labels, tooltips, help text.
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-sans',
-  weight: ['400', '500', '600'],
-  display: 'swap',
-});
+import { UpdateToast } from '../components/ui/UpdateToast';
 
 export const metadata: Metadata = {
   title: "Quark — Chat without the middle",
@@ -63,15 +43,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-bg-base text-fg-primary`}
-      >
+      <body className="antialiased bg-black text-white font-sans">
         <ErrorBoundary>
           <OfflineBanner />
           {children}
           <GlobalListener />
           <PWAInstallPrompt />
           <ToastContainer />
+          <UpdateToast />
         </ErrorBoundary>
       </body>
     </html>
