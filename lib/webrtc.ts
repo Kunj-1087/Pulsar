@@ -4,7 +4,8 @@ import {
   encodeBinaryFrame,
   encodeEncryptedControlFrame,
   decodeEncryptedControlFrame,
-  decodeEncryptedFileFrame
+  decodeEncryptedFileFrame,
+  calculateFileHash
 } from './fileTransfer';
 import { useChatStore } from '../store/chatStore';
 import {
@@ -58,6 +59,8 @@ export class QuarkPeer {
   private sendSeq = 0;
   private lastRecvSeq = -1;
   public remoteProtocolVersion = 0;
+
+  public activeResumes = new Map<string, number[]>();
 
   constructor(config: {
     peerId: string;
@@ -337,6 +340,10 @@ export class QuarkPeer {
               const plaintextStr = await decryptMessage(this.aesKey, iv, ciphertext);
               this.e2eeMessagesDecrypted++;
               const msg = JSON.parse(plaintextStr) as DataChannelMessage;
+              if (msg.type === 'file-resume') {
+                this.activeResumes.set(msg.id, msg.receivedChunks);
+                return;
+              }
               if (this.trackReceivedMessage(msg)) {
                 this.onMessage?.(msg);
               }
@@ -622,6 +629,22 @@ export class QuarkPeer {
       }
       return Promise.resolve();
     };
+
+    // Calculate file hash for resumed transfer validation
+    const fileHash = await calculateFileHash(file);
+
+    // Wait up to 1000ms for a file-resume payload if receiver has chunks
+    let skippedChunks: number[] = [];
+    this.activeResumes.delete(fileId);
+    
+    for (let i = 0; i < 20; i++) {
+      if (this.activeResumes.has(fileId)) {
+        skippedChunks = this.activeResumes.get(fileId) || [];
+        console.log(`[Quark Peer] Resuming file transfer! Found ${skippedChunks.length} existing chunks to skip.`);
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 50));
+    }
     
     const initialBytesSent = this.bytesSentAccumulator;
     await sendFile(
@@ -636,7 +659,9 @@ export class QuarkPeer {
       },
       isCancelled,
       checkBackpressure,
-      this.aesKey || undefined
+      this.aesKey || undefined,
+      skippedChunks,
+      fileHash
     );
   }
 

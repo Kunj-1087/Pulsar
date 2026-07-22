@@ -1,5 +1,6 @@
 import { DataChannelMessage } from '../types';
 import { encryptChunk } from './crypto';
+import { saveTempChunk, getTempChunks, clearTempChunks } from './storage';
 
 export const HEADER_SIZE = 47;
 
@@ -177,6 +178,13 @@ export function decodeEncryptedFileFrame(buffer: ArrayBuffer): {
 /**
  * Sends a file over an RTCDataChannel in chunks using the binary protocol.
  */
+export async function calculateFileHash(file: File | Blob): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function sendFile(
   channel: RTCDataChannel,
   fileId: string,
@@ -185,7 +193,9 @@ export async function sendFile(
   onProgress: (progress: number) => void,
   isCancelled: () => boolean,
   checkBackpressure: () => Promise<void>,
-  encryptionKey?: CryptoKey
+  encryptionKey?: CryptoKey,
+  skippedChunks?: number[],
+  hash?: string
 ): Promise<void> {
   const maxMb = Number(process.env.NEXT_PUBLIC_MAX_FILE_SIZE_MB) || 100;
   const maxBytes = maxMb * 1024 * 1024;
@@ -206,6 +216,9 @@ export async function sendFile(
 
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
+  // Derive file hash for integrity checks if not already provided
+  const fileHash = hash || await calculateFileHash(file);
+
   // 1. Send file metadata (JSON control string)
   const metaMsg: DataChannelMessage = {
     type: 'file-meta',
@@ -215,6 +228,7 @@ export async function sendFile(
     mimeType: file.type || 'application/octet-stream',
     totalChunks,
     sender: senderName,
+    hash: fileHash,
   };
   // Note: the metaMsg itself will be encrypted if sent via our encrypted control channel path in ChatWindow,
   // but here it represents metadata channel messaging structure.
@@ -242,10 +256,16 @@ export async function sendFile(
     });
   };
 
+  let progressCount = skippedChunks ? skippedChunks.length : 0;
+
   for (chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
     // Check cancellation signal
     if (isCancelled()) {
       throw new Error('Transfer cancelled');
+    }
+
+    if (skippedChunks && skippedChunks.includes(chunkIndex)) {
+      continue;
     }
 
     // Await backpressure resolution if output buffer is full
@@ -263,7 +283,8 @@ export async function sendFile(
       }
       
       channel.send(frame);
-      onProgress(Math.round(((chunkIndex + 1) / totalChunks) * 100));
+      progressCount++;
+      onProgress(Math.round((progressCount / totalChunks) * 100));
     } catch (err) {
       console.error(`[Quark FileTransfer] Error sending chunk ${chunkIndex} of file ${file.name}:`, err);
       throw err;
@@ -307,7 +328,33 @@ export class FileReceiver {
     if (index >= 0 && index < this.totalChunks && !this.chunks[index]) {
       this.chunks[index] = chunkBytes;
       this.receivedChunksCount++;
+      // Asynchronously store temp chunk in DB
+      saveTempChunk(this.id, index, chunkBytes).catch((err) => {
+        console.error('[Quark FileReceiver] Failed to save chunk to Dexie:', err);
+      });
     }
+  }
+
+  /**
+   * Pre-loads chunks already stored in Dexie.
+   */
+  async loadFromDB(): Promise<void> {
+    const saved = await getTempChunks(this.id);
+    for (const chunk of saved) {
+      if (chunk.chunkIndex >= 0 && chunk.chunkIndex < this.totalChunks) {
+        this.chunks[chunk.chunkIndex] = chunk.data;
+      }
+    }
+    this.receivedChunksCount = this.chunks.filter((c) => c !== undefined).length;
+  }
+
+  /**
+   * Clean up database records once file is assembled or cancelled.
+   */
+  clearFromDB(): void {
+    clearTempChunks(this.id).catch((err) => {
+      console.error('[Quark FileReceiver] Failed to clear temp chunks:', err);
+    });
   }
 
   /**

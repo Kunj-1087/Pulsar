@@ -218,6 +218,18 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
             )}
           </Button>
 
+          {/* Local Offline Pairing */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => window.dispatchEvent(new Event('open-manual-pairing'))}
+            className="w-8 h-8 p-0 border border-dim"
+            title="Local Offline Pairing"
+            aria-label="Local Offline Pairing"
+          >
+            <Radio className="w-4 h-4 text-accretion" />
+          </Button>
+
           {/* Security Center */}
           <Button
             variant="ghost"

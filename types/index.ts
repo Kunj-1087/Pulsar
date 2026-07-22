@@ -52,7 +52,8 @@ export interface Room {
 // WebRTC DataChannel message protocol
 export type DataChannelMessage =
   | { type: 'message'; id: string; text: string; sender: string; senderId: string; ts: number; protocolVersion?: number; seq?: number; disappearAfterMs?: number }
-  | { type: 'file-meta'; id: string; name: string; size: number; mimeType: string; totalChunks: number; sender: string; protocolVersion?: number; seq?: number }
+  | { type: 'file-meta'; id: string; name: string; size: number; mimeType: string; totalChunks: number; sender: string; hash?: string; protocolVersion?: number; seq?: number }
+  | { type: 'file-resume'; id: string; receivedChunks: number[]; protocolVersion?: number; seq?: number }
   | { type: 'file-complete'; id: string; protocolVersion?: number; seq?: number }
   | { type: 'file-cancel'; id: string; reason?: string; protocolVersion?: number; seq?: number }
   | { type: 'typing'; senderId: string; displayName: string; isTyping: boolean; protocolVersion?: number; seq?: number }
@@ -90,4 +91,29 @@ export interface ConnectionStats {
   e2eeDecryptionFailures?: number;
   protocolVersion?: number;
   remoteProtocolVersion?: number;
+}
+
+export interface OutboxMessage {
+  id: string;
+  roomId: string;
+  ts: number;
+  type: 'text' | 'file';
+  text?: string;
+  fileRef?: {
+    id: string;
+    name: string;
+    size: number;
+    mimeType: string;
+  };
+}
+
+export interface FileProgress {
+  id: string; // fileId
+  peerId: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  totalChunks: number;
+  receivedChunks: number[]; // indices of completed chunks
+  hash: string; // integrity SHA-256 hash
 }

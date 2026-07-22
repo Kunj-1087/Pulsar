@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import { Message, Room } from '../types';
+import { Message, Room, OutboxMessage, FileProgress } from '../types';
 
 export interface DBFile {
   id: string;
@@ -14,6 +14,9 @@ class QuarkDatabase extends Dexie {
   messages!: Table<Message, string>;
   files!: Table<DBFile, string>;
   rooms!: Table<Room, string>;
+  outbox!: Table<OutboxMessage, string>;
+  fileProgress!: Table<FileProgress, string>;
+  fileChunks!: Table<{ fileId: string; chunkIndex: number; data: Uint8Array }, [string, number]>;
 
   constructor() {
     super('QuarkDB');
@@ -26,6 +29,21 @@ class QuarkDatabase extends Dexie {
       messages: 'id, roomId, ts, deleteAt',
       files: 'id, ts',
       rooms: 'roomId, createdAt',
+    });
+    this.version(3).stores({
+      messages: 'id, roomId, ts, deleteAt',
+      files: 'id, ts',
+      rooms: 'roomId, createdAt',
+      outbox: 'id, roomId, ts',
+      fileProgress: 'id, peerId, hash',
+    });
+    this.version(4).stores({
+      messages: 'id, roomId, ts, deleteAt',
+      files: 'id, ts',
+      rooms: 'roomId, createdAt',
+      outbox: 'id, roomId, ts',
+      fileProgress: 'id, peerId, hash',
+      fileChunks: '[fileId+chunkIndex], fileId',
     });
   }
 }
@@ -167,5 +185,86 @@ export async function panicWipe(): Promise<void> {
     for (const key of keys) {
       try { await caches.delete(key); } catch {}
     }
+  }
+  try {
+    await db.outbox.clear();
+    await db.fileProgress.clear();
+  } catch {}
+}
+
+export async function saveOutboxMessage(msg: OutboxMessage): Promise<void> {
+  try {
+    await db.outbox.put(msg);
+  } catch (error) {
+    console.error('Failed to save outbox message:', error);
+  }
+}
+
+export async function getOutboxMessages(roomId: string): Promise<OutboxMessage[]> {
+  try {
+    return await db.outbox.where('roomId').equals(roomId).sortBy('ts');
+  } catch (error) {
+    console.error('Failed to retrieve outbox messages:', error);
+    return [];
+  }
+}
+
+export async function removeOutboxMessage(id: string): Promise<void> {
+  try {
+    await db.outbox.delete(id);
+  } catch (error) {
+    console.error('Failed to delete outbox message:', error);
+  }
+}
+
+export async function saveFileProgress(prog: FileProgress): Promise<void> {
+  try {
+    await db.fileProgress.put(prog);
+  } catch (error) {
+    console.error('Failed to save file progress:', error);
+  }
+}
+
+export async function getFileProgress(id: string): Promise<FileProgress | null> {
+  try {
+    const p = await db.fileProgress.get(id);
+    return p || null;
+  } catch (error) {
+    console.error('Failed to get file progress:', error);
+    return null;
+  }
+}
+
+export async function removeFileProgress(id: string): Promise<void> {
+  try {
+    await db.fileProgress.delete(id);
+  } catch (error) {
+    console.error('Failed to remove file progress:', error);
+  }
+}
+
+export async function saveTempChunk(fileId: string, chunkIndex: number, data: Uint8Array): Promise<void> {
+  try {
+    await db.fileChunks.put({ fileId, chunkIndex, data });
+  } catch (error) {
+    console.error('Failed to save temp chunk to DB:', error);
+  }
+}
+
+export async function getTempChunks(fileId: string): Promise<{ chunkIndex: number; data: Uint8Array }[]> {
+  try {
+    return await db.fileChunks.where('fileId').equals(fileId).toArray();
+  } catch (error) {
+    console.error('Failed to retrieve temp chunks:', error);
+    return [];
+  }
+}
+
+export async function clearTempChunks(fileId: string): Promise<void> {
+  try {
+    const keys = await db.fileChunks.where('fileId').equals(fileId).primaryKeys();
+    await db.fileChunks.bulkDelete(keys);
+  } catch (error) {
+    console.error('Failed to clear temp chunks:', error);
   }
 }

@@ -6,13 +6,14 @@ import { useChatStore } from '../../store/chatStore';
 import { FallbackSignalingDriver, SignalingDriver } from '../../lib/signaling';
 import { QuarkRoom } from '../../lib/webrtc';
 import { FileReceiver, decodeBinaryFrame } from '../../lib/fileTransfer';
-import { getMessages, saveMessage, saveFile, saveRoom, cleanupExpiredMessages } from '../../lib/storage';
+import { getMessages, saveMessage, saveFile, saveRoom, cleanupExpiredMessages, saveOutboxMessage, getOutboxMessages, removeOutboxMessage, saveFileProgress, getFileProgress, removeFileProgress } from '../../lib/storage';
 import dynamic from 'next/dynamic';
 import { Message, SignalingMessage, DataChannelMessage, PeerConnectionState } from '../../types';
 import { RoomHeader } from './RoomHeader';
 import { PeerStatus } from './PeerStatus';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
+import { ManualPairingModal } from './ManualPairingModal';
 import { toast } from '../../store/toastStore';
 import { X } from 'lucide-react';
 import { Button } from '../ui/Button';
@@ -32,6 +33,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const [displayName, setDisplayName] = useState('');
   const [myPeerId] = useState(() => generateId());
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
+  const [showManualPairing, setShowManualPairing] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -118,6 +120,36 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     store.setTyping(peerId, false);
   };
 
+  const flushOutbox = async () => {
+    const connectedPeers = Array.from(store.peers.values()).filter(p => p.connectionState === 'connected');
+    if (connectedPeers.length === 0) return;
+
+    try {
+      const pending = await getOutboxMessages(roomId);
+      if (pending.length === 0) return;
+
+      console.log(`[Quark Outbox] Flushing ${pending.length} pending messages...`);
+      for (const msg of pending) {
+        if (msg.type === 'text') {
+          const wireMsg: DataChannelMessage = {
+            type: 'message',
+            id: msg.id,
+            text: msg.text || '',
+            sender: displayName,
+            senderId: myPeerId,
+            ts: msg.ts,
+          };
+          roomRef.current?.broadcast(wireMsg);
+          await removeOutboxMessage(msg.id);
+          store.removeOutboxPendingId(msg.id);
+        }
+      }
+      toast.success('Offline outbox messages delivered!');
+    } catch (err) {
+      console.error('[Quark Outbox] Error flushing outbox:', err);
+    }
+  };
+
   const cleanupPeerResources = (peerId: string) => {
     const timer = disconnectTimersRef.current.get(peerId);
     if (timer) {
@@ -165,10 +197,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         createdAt: Date.now(),
       });
 
-      // 2. Load message history from Dexie
+      // 2. Load message history and outbox messages from Dexie
       const history = await getMessages(roomId);
+      const outbox = await getOutboxMessages(roomId);
       if (active) {
         store.setMessages(history);
+        store.setOutboxPendingIds(outbox.map((o) => o.id));
       }
 
       // Add a system announcement message that we are initializing
@@ -216,6 +250,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           if (oldPeer?.connectionState !== 'connected') {
             const name = oldPeer?.handle ? `@${oldPeer.handle}` : (oldPeer?.displayName || peerId.substring(0, 8));
             toast.success(`${name} joined. E2EE established.`);
+            
+            // Deliver pending messages in outbox
+            flushOutbox();
 
             // Send our peer info immediately
             if (displayName) {
@@ -411,6 +448,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       cleanupExpiredMessages();
     }, 30000);
 
+    const outboxInterval = setInterval(() => {
+      flushOutbox();
+    }, 5000);
+
+    if (typeof window !== 'undefined' && 'serviceWorker' in navigator && 'SyncManager' in window) {
+      navigator.serviceWorker.ready.then((reg) => {
+        // @ts-ignore
+        reg.sync.register('flush-quark-outbox').catch(() => {});
+      }).catch(() => {});
+    }
+
     const currentDisconnectTimers = disconnectTimersRef.current;
     const currentTypingTimers = typingTimersRef.current;
     const currentReceiversMap = fileReceiversRef.current;
@@ -420,6 +468,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       active = false;
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
       clearInterval(cleanupInterval);
+      clearInterval(outboxInterval);
       
       // Cancel all active transfers
       const currentReceivers = Array.from(currentReceiversMap.keys());
@@ -632,6 +681,31 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         const receiver = new FileReceiver(msg.id, msg.name, msg.size, msg.mimeType, msg.totalChunks);
         fileReceiversRef.current.set(msg.id, receiver);
 
+        // Check for resume progress record
+        getFileProgress(msg.id).then(async (prog) => {
+          if (prog) {
+            await receiver.loadFromDB();
+            store.updateFileProgress(msg.id, receiver.getProgress());
+            // Send resume control feedback back
+            roomRef.current?.sendToPeer(peerId, {
+              type: 'file-resume',
+              id: msg.id,
+              receivedChunks: prog.receivedChunks,
+            });
+          } else {
+            await saveFileProgress({
+              id: msg.id,
+              peerId,
+              name: msg.name,
+              size: msg.size,
+              mimeType: msg.mimeType,
+              totalChunks: msg.totalChunks,
+              receivedChunks: [],
+              hash: msg.hash || '',
+            });
+          }
+        });
+
         // Add placeholder in message list
         const fileMsgPlaceholder: Message = {
           id: msg.id,
@@ -659,6 +733,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           try {
             const assembledBlob = rxComp.assemble();
             
+            // File hash integrity checks
+            const prog = await getFileProgress(msg.id);
+            if (prog && prog.hash) {
+              const { calculateFileHash } = await import('../../lib/fileTransfer');
+              const computedHash = await calculateFileHash(assembledBlob);
+              if (computedHash !== prog.hash) {
+                console.error('[Quark Integrity] Hash mismatch detected! Expected:', prog.hash, 'Got:', computedHash);
+                toast.error('File integrity check failed. File may be corrupted.', { title: 'Integrity Failure' });
+                store.updateFileProgress(msg.id, 0, 'error');
+                return;
+              }
+              console.log('[Quark Integrity] Hash matches expected SHA-256 value. Transfer verified!');
+            }
+
             // Save to IndexedDB
             await saveFile({
               id: msg.id,
@@ -675,6 +763,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             if (completedMsg) {
               await saveMessage(completedMsg);
             }
+
+            // Remove progress record & temp chunks
+            await removeFileProgress(msg.id);
+            rxComp.clearFromDB();
           } catch (err) {
             console.error('File assembly failure:', err);
             store.updateFileProgress(msg.id, 0, 'error');
@@ -685,7 +777,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         break;
 
       case 'file-cancel':
-        fileReceiversRef.current.delete(msg.id);
+        const rxCancel = fileReceiversRef.current.get(msg.id);
+        if (rxCancel) {
+          rxCancel.clearFromDB();
+          fileReceiversRef.current.delete(msg.id);
+        }
+        await removeFileProgress(msg.id);
         store.updateFileProgress(msg.id, 0, 'cancelled');
         const fileMsg = store.messages.find(m => m.id === msg.id);
         if (fileMsg) {
@@ -734,6 +831,23 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       if (receiver) {
         receiver.receiveChunk(chunkIndex, chunkData);
         store.updateFileProgress(transferId, receiver.getProgress());
+
+        // Persist chunk index progress in Dexie
+        const currentProgress = await getFileProgress(transferId);
+        const received = currentProgress ? [...currentProgress.receivedChunks] : [];
+        if (!received.includes(chunkIndex)) {
+          received.push(chunkIndex);
+        }
+        await saveFileProgress({
+          id: transferId,
+          peerId,
+          name: receiver.name,
+          size: receiver.size,
+          mimeType: receiver.mimeType,
+          totalChunks: receiver.totalChunks,
+          receivedChunks: received,
+          hash: currentProgress?.hash || '',
+        });
       } else {
         console.warn(`[Quark ChatWindow] Received binary chunk for unknown transfer: ${transferId}`);
       }
@@ -745,7 +859,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const handleCancelTransfer = async (fileId: string) => {
     console.log(`[Quark ChatWindow] Cancelling transfer: ${fileId}`);
     cancelledTransfersRef.current.add(fileId);
-    fileReceiversRef.current.delete(fileId);
+    
+    const rx = fileReceiversRef.current.get(fileId);
+    if (rx) {
+      rx.clearFromDB();
+      fileReceiversRef.current.delete(fileId);
+    }
+    await removeFileProgress(fileId);
     
     roomRef.current?.broadcast({
       type: 'file-cancel',
@@ -772,9 +892,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       const { fileId } = (e as CustomEvent).detail;
       handleCancelTransfer(fileId);
     };
+    const handleOpenManual = () => {
+      setShowManualPairing(true);
+    };
     window.addEventListener('quark-cancel-transfer', handleCancelEvent);
+    window.addEventListener('open-manual-pairing', handleOpenManual);
     return () => {
       window.removeEventListener('quark-cancel-transfer', handleCancelEvent);
+      window.removeEventListener('open-manual-pairing', handleOpenManual);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -797,6 +922,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     store.addMessage(newMsg);
     if (!ephemeral) {
       await saveMessage(newMsg);
+    }
+
+    const connectedPeers = Array.from(store.peers.values()).filter(p => p.connectionState === 'connected');
+    if (connectedPeers.length === 0) {
+      // Offline outbox queue
+      store.addOutboxPendingId(textId);
+      await saveOutboxMessage({
+        id: textId,
+        roomId,
+        ts: Date.now(),
+        type: 'text',
+        text,
+      });
+      toast.info('No connected peers found. Message queued for delivery.');
+      return;
     }
 
     const wireMsg: DataChannelMessage = {
@@ -975,22 +1115,32 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             <p className="type-uppercase-label text-decay">
               <span>Signaling offline. Connection could not be established.</span>
             </p>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={async () => {
-                store.setRoomStatus('signaling');
-                try {
-                  await signalingRef.current?.connect();
-                  await signalingRef.current?.joinRoom(roomId);
-                } catch {
-                  store.setRoomStatus('failed');
-                }
-              }}
-              className="text-xs h-8 px-4"
-            >
-              Retry connection
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={async () => {
+                  store.setRoomStatus('signaling');
+                  try {
+                    await signalingRef.current?.connect();
+                    await signalingRef.current?.joinRoom(roomId);
+                  } catch {
+                    store.setRoomStatus('failed');
+                  }
+                }}
+                className="text-xs h-8 px-4"
+              >
+                Retry connection
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowManualPairing(true)}
+                className="text-xs h-8 px-4 border border-dim text-accretion hover:bg-accretion/10"
+              >
+                Connect offline via QR/Local
+              </Button>
+            </div>
           </div>
         ) : (
           <MessageInput
@@ -1040,6 +1190,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Offline Manual/QR Pairing Modal */}
+      {showManualPairing && (
+        <ManualPairingModal
+          onClose={() => setShowManualPairing(false)}
+          myPeerId={myPeerId}
+          roomId={roomId}
+          roomRef={roomRef}
+        />
       )}
     </div>
   );

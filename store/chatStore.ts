@@ -38,11 +38,28 @@ interface ChatStore {
   signalingDriverName: 'Primary' | 'Backup (Ably)' | 'None';
   setSignalingDriverName: (name: 'Primary' | 'Backup (Ably)' | 'None') => void;
 
+  outboxPendingIds: Set<string>;
+  addOutboxPendingId: (id: string) => void;
+  removeOutboxPendingId: (id: string) => void;
+  setOutboxPendingIds: (ids: string[]) => void;
+
   reset: () => void;
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
   room: null,
+  outboxPendingIds: new Set(),
+  addOutboxPendingId: (id) => set((state) => {
+    const next = new Set(state.outboxPendingIds);
+    next.add(id);
+    return { outboxPendingIds: next };
+  }),
+  removeOutboxPendingId: (id) => set((state) => {
+    const next = new Set(state.outboxPendingIds);
+    next.delete(id);
+    return { outboxPendingIds: next };
+  }),
+  setOutboxPendingIds: (ids) => set({ outboxPendingIds: new Set(ids) }),
   setRoom: (room) => set({ room }),
   
   peers: new Map(),
@@ -171,5 +188,6 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     localSdp: null,
     remoteSdp: null,
     signalingDriverName: 'None',
+    outboxPendingIds: new Set(),
   }),
 }));

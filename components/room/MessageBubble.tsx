@@ -93,8 +93,23 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         )}
 
         {/* Timestamp hover reveal container */}
-        <div className="timestamp-container w-full flex justify-end type-timestamp mt-1 select-none">
+        <div className="timestamp-container w-full flex items-center justify-end gap-1.5 type-timestamp mt-1 select-none font-mono">
           <span>{formatTime(ts)}</span>
+          {isOwn && (
+            <span className="flex items-center">
+              {useChatStore.getState().outboxPendingIds.has(message.id) ? (
+                useChatStore.getState().roomStatus === 'failed' ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-redshift" title="Delivery failed (offline)" />
+                ) : useChatStore.getState().roomStatus === 'reconnecting' || useChatStore.getState().roomStatus === 'connecting' ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-accretion animate-pulse" title="Flushing/Reconnecting..." />
+                ) : (
+                  <span className="w-1.5 h-1.5 rounded-full bg-accretion" title="Pending delivery" />
+                )
+              ) : (
+                <span className="w-1.5 h-1.5 rounded-full bg-nebula" title="Delivered" />
+              )}
+            </span>
+          )}
         </div>
       </div>
     </div>

@@ -203,3 +203,5 @@ export interface SignalingDriver {
 
 export { AblySignaling } from './signaling/ablyDriver';
 export { FallbackSignalingDriver } from './signaling/fallbackDriver';
+export { QRManualSignalingDriver } from './signaling/manualDriver';
+export { MDNSDiscoveryDriver } from './signaling/mdnsDriver';
