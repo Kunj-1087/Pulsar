@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import { Message, Room, OutboxMessage, FileProgress } from '../types';
+import { Message, Room, OutboxMessage, FileProgress, Channel } from '../types';
 
 export interface DBFile {
   id: string;
@@ -17,6 +17,7 @@ class QuarkDatabase extends Dexie {
   outbox!: Table<OutboxMessage, string>;
   fileProgress!: Table<FileProgress, string>;
   fileChunks!: Table<{ fileId: string; chunkIndex: number; data: Uint8Array }, [string, number]>;
+  channels!: Table<Channel, string>;
 
   constructor() {
     super('QuarkDB');
@@ -44,6 +45,15 @@ class QuarkDatabase extends Dexie {
       outbox: 'id, roomId, ts',
       fileProgress: 'id, peerId, hash',
       fileChunks: '[fileId+chunkIndex], fileId',
+    });
+    this.version(5).stores({
+      messages: 'id, roomId, channelId, ts, deleteAt',
+      files: 'id, ts',
+      rooms: 'roomId, createdAt',
+      outbox: 'id, roomId, ts',
+      fileProgress: 'id, peerId, hash',
+      fileChunks: '[fileId+chunkIndex], fileId',
+      channels: 'id, roomId, createdAt',
     });
   }
 }
@@ -266,5 +276,87 @@ export async function clearTempChunks(fileId: string): Promise<void> {
     await db.fileChunks.bulkDelete(keys);
   } catch (error) {
     console.error('Failed to clear temp chunks:', error);
+  }
+}
+
+export async function createChannel(channel: Channel): Promise<void> {
+  try {
+    await db.channels.put(channel);
+  } catch (error) {
+    console.error('Failed to create channel in IndexedDB:', error);
+  }
+}
+
+export async function getChannelsByRoom(roomId: string): Promise<Channel[]> {
+  try {
+    return await db.channels.where('roomId').equals(roomId).sortBy('createdAt');
+  } catch (error) {
+    console.error('Failed to get channels from IndexedDB:', error);
+    return [];
+  }
+}
+
+export async function deleteChannel(channelId: string): Promise<void> {
+  try {
+    await db.channels.delete(channelId);
+    const messages = await db.messages.where('channelId').equals(channelId).toArray();
+    const msgIds = messages.map(m => m.id);
+    const fileIds = messages.filter(m => m.type === 'file' && m.fileRef).map(m => m.fileRef!.id);
+    await db.messages.bulkDelete(msgIds);
+    if (fileIds.length > 0) {
+      await db.files.bulkDelete(fileIds);
+    }
+  } catch (error) {
+    console.error('Failed to delete channel from IndexedDB:', error);
+  }
+}
+
+export async function getMessagesByChannel(roomId: string, channelId: string): Promise<Message[]> {
+  try {
+    const list = await db.messages.where('roomId').equals(roomId).filter(m => m.channelId === channelId).sortBy('ts');
+    for (const msg of list) {
+      if (msg.type === 'file' && msg.fileRef) {
+        const storedFile = await db.files.get(msg.fileRef.id);
+        if (storedFile) {
+          msg.fileRef.blob = storedFile.blob;
+          msg.fileRef.status = 'complete';
+          msg.fileRef.progress = 100;
+        }
+      }
+    }
+    return list;
+  } catch (error) {
+    console.error('Failed to get messages by channel:', error);
+    return [];
+  }
+}
+
+export async function updateMessageReactionsInDB(messageId: string, emoji: string, peerId: string, action: 'add' | 'remove'): Promise<void> {
+  try {
+    const msg = await db.messages.get(messageId);
+    if (!msg) return;
+    const reactions = msg.reactions ? [...msg.reactions] : [];
+    const existingIdx = reactions.findIndex(r => r.emoji === emoji);
+    if (existingIdx > -1) {
+      const rx = reactions[existingIdx];
+      const peersSet = new Set(rx.peers);
+      if (action === 'add') {
+        peersSet.add(peerId);
+      } else {
+        peersSet.delete(peerId);
+      }
+      const updatedPeers = Array.from(peersSet);
+      if (updatedPeers.length === 0) {
+        reactions.splice(existingIdx, 1);
+      } else {
+        reactions[existingIdx] = { ...rx, peers: updatedPeers };
+      }
+    } else if (action === 'add') {
+      reactions.push({ emoji, peers: [peerId] });
+    }
+    msg.reactions = reactions;
+    await db.messages.put(msg);
+  } catch (error) {
+    console.error('Failed to update reactions in DB:', error);
   }
 }

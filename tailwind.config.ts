@@ -33,8 +33,16 @@ const config: Config = {
         'widest': '0.2em',
       },
 
-      // ── Color Tokens (Deep Field Palette) ──
       colors: {
+        base: 'var(--bg-base)',
+        elevated: 'var(--bg-elevated)',
+        overlay: 'var(--bg-overlay)',
+        accent: 'var(--accent)',
+        'accent-hover': 'var(--accent-hover)',
+        'accent-muted': 'var(--accent-muted)',
+        'text-primary': 'var(--text-primary)',
+        'text-secondary': 'var(--text-secondary)',
+        'text-muted': 'var(--text-muted)',
         void: "#000000",
         surface: {
           DEFAULT: "var(--bg-surface)",
@@ -59,7 +67,7 @@ const config: Config = {
         border: {
           subtle:  "var(--border-subtle)",
           dim:     "var(--border-dim)",
-          DEFAULT: "var(--border-default)",
+          DEFAULT: "var(--border)",
           strong:  "var(--border-strong)",
           focus:   "var(--border-focus)",
         },

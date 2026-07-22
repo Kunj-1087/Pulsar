@@ -1,4 +1,4 @@
-import { DataChannelMessage, SignalingMessage, ConnectionStats, PeerConnectionState, PROTOCOL_VERSION } from '../types';
+import { DataChannelMessage, SignalingMessage, ConnectionStats, PeerConnectionState, PROTOCOL_VERSION, Channel } from '../types';
 import {
   sendFile,
   encodeBinaryFrame,
@@ -18,6 +18,26 @@ import {
   decryptChunk,
   deriveSafetyNumber
 } from './crypto';
+
+let activeRoomInstance: QuarkRoom | null = null;
+
+export function broadcastChannelCreate(channel: Channel) {
+  if (activeRoomInstance) {
+    activeRoomInstance.broadcast({
+      type: 'channel-create',
+      channel,
+    });
+  }
+}
+
+export function broadcastChannelDelete(channelId: string) {
+  if (activeRoomInstance) {
+    activeRoomInstance.broadcast({
+      type: 'channel-delete',
+      channelId,
+    });
+  }
+}
 
 export class QuarkPeer {
   peerConnection!: RTCPeerConnection;
@@ -613,7 +633,8 @@ export class QuarkPeer {
     file: File,
     senderName: string,
     onProgress: (pct: number) => void,
-    isCancelled: () => boolean
+    isCancelled: () => boolean,
+    channelId?: string
   ): Promise<void> {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
       throw new Error('Data channel not open');
@@ -661,7 +682,8 @@ export class QuarkPeer {
       checkBackpressure,
       this.aesKey || undefined,
       skippedChunks,
-      fileHash
+      fileHash,
+      channelId
     );
   }
 
@@ -791,6 +813,7 @@ export class QuarkRoom {
     this.onPeerBinaryMessage = config.onPeerBinaryMessage;
     this.onPeerStateChange = config.onPeerStateChange;
     this.onIceLog = config.onIceLog;
+    activeRoomInstance = this;
   }
 
   /**

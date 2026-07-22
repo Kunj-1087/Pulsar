@@ -1,5 +1,5 @@
 import { DataChannelMessage } from '../types';
-import { encryptChunk } from './crypto';
+import { encryptChunk, encryptMessage } from './crypto';
 import { saveTempChunk, getTempChunks, clearTempChunks } from './storage';
 
 export const HEADER_SIZE = 47;
@@ -195,7 +195,8 @@ export async function sendFile(
   checkBackpressure: () => Promise<void>,
   encryptionKey?: CryptoKey,
   skippedChunks?: number[],
-  hash?: string
+  hash?: string,
+  channelId?: string
 ): Promise<void> {
   const maxMb = Number(process.env.NEXT_PUBLIC_MAX_FILE_SIZE_MB) || 100;
   const maxBytes = maxMb * 1024 * 1024;
@@ -229,10 +230,21 @@ export async function sendFile(
     totalChunks,
     sender: senderName,
     hash: fileHash,
+    channelId,
   };
-  // Note: the metaMsg itself will be encrypted if sent via our encrypted control channel path in ChatWindow,
-  // but here it represents metadata channel messaging structure.
-  channel.send(JSON.stringify(metaMsg));
+  
+  if (encryptionKey) {
+    try {
+      const rawPlaintext = JSON.stringify(metaMsg);
+      const { iv, ciphertext } = await encryptMessage(encryptionKey, rawPlaintext);
+      const frame = encodeEncryptedControlFrame(iv, ciphertext);
+      channel.send(frame);
+    } catch {
+      channel.send(JSON.stringify(metaMsg));
+    }
+  } else {
+    channel.send(JSON.stringify(metaMsg));
+  }
 
   // 2. Read and send file in chunks
   const fileReader = new FileReader();

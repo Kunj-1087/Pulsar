@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Check, QrCode, Share2, Terminal, Users, X, Lock, ShieldAlert, Radio, Shield } from 'lucide-react';
+import { Copy, Check, QrCode, Share2, Terminal, Users, X, Lock, ShieldAlert, Radio, Shield, Menu } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -11,10 +11,16 @@ import { SecurityCenter } from './SecurityCenter';
 
 interface RoomHeaderProps {
   roomId: string;
+  onToggleChannelSidebar?: () => void;
+  onToggleMembersList?: () => void;
 }
 
-export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
-  const { peers, devModeEnabled, toggleDevMode, reset, setRoomStatus } = useChatStore();
+export const RoomHeader: React.FC<RoomHeaderProps> = ({
+  roomId,
+  onToggleChannelSidebar,
+  onToggleMembersList,
+}) => {
+  const { peers, devModeEnabled, toggleDevMode, reset, setRoomStatus, channels, activeChannelId } = useChatStore();
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
@@ -96,11 +102,24 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
   const allPeersE2EE = hasPeers && connectedPeers.every((p) => p.e2eeStatus === 'established');
   const anyPeerE2EEFailed = connectedPeers.some((p) => p.e2eeStatus === 'failed');
 
+  const activeChannel = channels.find(c => c.id === activeChannelId);
+  const activeChannelName = activeChannel ? activeChannel.name : 'general';
+
   return (
     <>
       <header className="h-13 bg-bg-base px-4 flex items-center justify-between select-none">
-        {/* Left: Wordmark */}
+        {/* Left: Hamburger menu (mobile) + Wordmark */}
         <div className="flex items-center gap-2">
+          {onToggleChannelSidebar && (
+            <button
+              onClick={onToggleChannelSidebar}
+              className="md:hidden text-text-muted hover:text-text-primary p-1 focus:outline-none"
+              aria-label="Toggle Channels"
+              title="Toggle Channels"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
           <span className="type-wordmark text-sm text-fg-primary group cursor-default">
             q<span className="group-hover:text-quantum transition-colors duration-300 ease-standard">ua</span>rk
           </span>
@@ -133,8 +152,11 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
           )}
         </div>
 
-        {/* Center: Identity & Monospace room code display */}
+        {/* Center: Active channel & Room code display */}
         <div className="flex items-center gap-4">
+          <span className="text-text-secondary font-mono text-sm font-semibold">
+            # {activeChannelName}
+          </span>
           {identity && (
             <div className="hidden sm:flex items-center gap-2">
               <span
@@ -177,8 +199,20 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
 
         {/* Right: Actions & Badges */}
         <div className="flex items-center gap-2">
+          {/* Mobile Members Toggle Button */}
+          {onToggleMembersList && (
+            <button
+              onClick={onToggleMembersList}
+              className="md:hidden text-text-muted hover:text-text-primary p-1 focus:outline-none"
+              aria-label="Toggle Members List"
+              title="Toggle Members List"
+            >
+              <Users className="w-5 h-5" />
+            </button>
+          )}
+
           {/* Peer Count Badge */}
-          <div className="flex items-center gap-2">
+          <div className="hidden md:flex items-center gap-2">
             <div className="flex items-center gap-1.5 px-2.5 h-8 bg-bg-surface border border-border rounded font-mono text-xs text-fg-primary">
               <Users className="w-3.5 h-3.5 text-fg-subtle" />
               <span>{connectedPeersCount}</span>

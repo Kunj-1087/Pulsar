@@ -2,6 +2,28 @@ export const PROTOCOL_VERSION = 1;
 
 export type MessageType = 'text' | 'file-meta' | 'file-complete' | 'file-cancel' | 'typing' | 'peer-info' | 'system';
 
+// Channel — a named sub-room within a Quark room
+export type Channel = {
+  id: string;           // UUID
+  roomId: string;
+  name: string;         // e.g. "general", "resources"
+  createdAt: number;
+  createdBy: string;    // peer ID of creator
+};
+
+// Reaction — emoji reaction on a message
+export type Reaction = {
+  emoji: string;
+  peers: string[];      // peer IDs who reacted
+};
+
+// ReplyRef — reference to a quoted message
+export type ReplyRef = {
+  messageId: string;
+  senderHandle: string;
+  preview: string;      // first 80 chars of the replied-to message text
+};
+
 export interface Message {
   id: string;
   roomId: string;
@@ -13,6 +35,9 @@ export interface Message {
   isOwn: boolean;
   fileRef?: FileRef;
   deleteAt?: number;
+  channelId?: string;
+  reactions?: Reaction[];
+  replyTo?: ReplyRef;
 }
 
 export interface FileRef {
@@ -51,14 +76,18 @@ export interface Room {
 
 // WebRTC DataChannel message protocol
 export type DataChannelMessage =
-  | { type: 'message'; id: string; text: string; sender: string; senderId: string; ts: number; protocolVersion?: number; seq?: number; disappearAfterMs?: number }
-  | { type: 'file-meta'; id: string; name: string; size: number; mimeType: string; totalChunks: number; sender: string; hash?: string; protocolVersion?: number; seq?: number }
+  | { type: 'message'; id: string; text: string; sender: string; senderId: string; ts: number; protocolVersion?: number; seq?: number; disappearAfterMs?: number; channelId?: string; replyTo?: ReplyRef }
+  | { type: 'file-meta'; id: string; name: string; size: number; mimeType: string; totalChunks: number; sender: string; hash?: string; protocolVersion?: number; seq?: number; channelId?: string }
   | { type: 'file-resume'; id: string; receivedChunks: number[]; protocolVersion?: number; seq?: number }
   | { type: 'file-complete'; id: string; protocolVersion?: number; seq?: number }
   | { type: 'file-cancel'; id: string; reason?: string; protocolVersion?: number; seq?: number }
   | { type: 'typing'; senderId: string; displayName: string; isTyping: boolean; protocolVersion?: number; seq?: number }
   | { type: 'peer-info'; peerId: string; displayName: string; handle?: string; peerColor?: string; protocolVersion?: number; seq?: number }
-  | { type: 'key-exchange'; publicKey: JsonWebKey; protocolVersion?: number; seq?: number };
+  | { type: 'key-exchange'; publicKey: JsonWebKey; protocolVersion?: number; seq?: number }
+  | { type: 'channel-create'; channel: Channel; protocolVersion?: number; seq?: number }
+  | { type: 'channel-delete'; channelId: string; protocolVersion?: number; seq?: number }
+  | { type: 'message-react'; messageId: string; channelId: string; emoji: string; peerId: string; action: 'add' | 'remove'; protocolVersion?: number; seq?: number }
+  | { type: 'channel-list'; channels: Channel[]; protocolVersion?: number; seq?: number };
 
 // Signaling protocol (compatible with Ably)
 export type SignalingMessage =

@@ -6,13 +6,15 @@ import { useChatStore } from '../../store/chatStore';
 import { FallbackSignalingDriver, SignalingDriver } from '../../lib/signaling';
 import { QuarkRoom } from '../../lib/webrtc';
 import { FileReceiver, decodeBinaryFrame } from '../../lib/fileTransfer';
-import { getMessages, saveMessage, saveFile, saveRoom, cleanupExpiredMessages, saveOutboxMessage, getOutboxMessages, removeOutboxMessage, saveFileProgress, getFileProgress, removeFileProgress } from '../../lib/storage';
+import { getMessages, saveMessage, saveFile, saveRoom, getRoom, cleanupExpiredMessages, saveOutboxMessage, getOutboxMessages, removeOutboxMessage, saveFileProgress, getFileProgress, removeFileProgress, getChannelsByRoom, createChannel, deleteChannel, updateMessageReactionsInDB } from '../../lib/storage';
 import dynamic from 'next/dynamic';
-import { Message, SignalingMessage, DataChannelMessage, PeerConnectionState } from '../../types';
+import { Message, SignalingMessage, DataChannelMessage, PeerConnectionState, Channel } from '../../types';
 import { RoomHeader } from './RoomHeader';
 import { PeerStatus } from './PeerStatus';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
+import { ChannelSidebar } from './ChannelSidebar';
+import { MembersList } from './MembersList';
 import { ManualPairingModal } from './ManualPairingModal';
 import { toast } from '../../store/toastStore';
 import { X } from 'lucide-react';
@@ -34,6 +36,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const [myPeerId] = useState(() => generateId());
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [showManualPairing, setShowManualPairing] = useState(false);
+  const [showChannelSidebar, setShowChannelSidebar] = useState(false);
+  const [showMembersList, setShowMembersList] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -182,27 +186,40 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         myName = `Peer_${Math.random().toString(36).substring(2, 6)}`;
       }
       setDisplayName(myName);
+      store.setMyPeerId(myPeerId);
+
+      // Check if room already exists in DB to preserve isHost
+      const existingRoom = await getRoom(roomId);
+      const isHost = existingRoom ? existingRoom.isHost : false;
 
       // Save room metadata in store & local DB
       store.setRoom({
         roomId,
         displayName: myName,
-        isHost: false, // will negotiate dynamically in mesh
-        createdAt: Date.now(),
+        isHost,
+        createdAt: existingRoom ? existingRoom.createdAt : Date.now(),
       });
-      await saveRoom({
-        roomId,
-        displayName: myName,
-        isHost: false,
-        createdAt: Date.now(),
-      });
+      if (!existingRoom) {
+        await saveRoom({
+          roomId,
+          displayName: myName,
+          isHost: false,
+          createdAt: Date.now(),
+        });
+      }
 
-      // 2. Load message history and outbox messages from Dexie
+      // 2. Load message history, channels, and outbox messages from Dexie
       const history = await getMessages(roomId);
       const outbox = await getOutboxMessages(roomId);
+      const savedChannels = await getChannelsByRoom(roomId);
+
       if (active) {
         store.setMessages(history);
         store.setOutboxPendingIds(outbox.map((o) => o.id));
+        if (savedChannels.length > 0) {
+          savedChannels.forEach((ch) => store.addChannel(ch));
+          store.setActiveChannel(savedChannels[0].id);
+        }
       }
 
       // Add a system announcement message that we are initializing
@@ -273,6 +290,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
                 displayName,
                 handle: myHandle,
                 peerColor: myColor,
+              });
+            }
+
+            if (store.room?.isHost && store.channels.length > 0) {
+              roomRef.current?.sendToPeer(peerId, {
+                type: 'channel-list',
+                channels: store.channels,
               });
             }
           }
@@ -498,7 +522,28 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     switch (msg.type) {
       case 'room-joined':
         store.appendIceLog(`// [Signaling] Joined room. Existing peers: ${msg.existingPeers?.join(', ') || 'None'}`);
-        if (msg.existingPeers) {
+        const isLocalHost = !msg.existingPeers || msg.existingPeers.length === 0;
+
+        if (store.room) {
+          const updatedRoom = { ...store.room, isHost: isLocalHost };
+          store.setRoom(updatedRoom);
+          await saveRoom(updatedRoom);
+        }
+
+        if (isLocalHost && store.channels.length === 0) {
+          const defaultChannel: Channel = {
+            id: generateId(),
+            roomId,
+            name: 'general',
+            createdAt: Date.now(),
+            createdBy: myPeerId,
+          };
+          store.addChannel(defaultChannel);
+          await createChannel(defaultChannel);
+          store.setActiveChannel(defaultChannel.id);
+        }
+
+        if (msg.existingPeers && msg.existingPeers.length > 0) {
           store.setRoomStatus('connecting');
 
           // Prune any orphaned peers in local store that left while disconnected
@@ -669,10 +714,34 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           ts: msg.ts,
           isOwn: false,
           deleteAt,
+          channelId: msg.channelId,
+          replyTo: msg.replyTo,
         };
         store.addMessage(newTextMsg);
         if (!ephemeral) {
           await saveMessage(newTextMsg);
+        }
+        break;
+
+      case 'channel-create':
+        store.addChannel(msg.channel);
+        await createChannel(msg.channel);
+        break;
+
+      case 'channel-delete':
+        store.removeChannel(msg.channelId);
+        await deleteChannel(msg.channelId);
+        break;
+
+      case 'message-react':
+        store.updateMessageReactions(msg.messageId, msg.emoji, msg.peerId, msg.action);
+        await updateMessageReactionsInDB(msg.messageId, msg.emoji, msg.peerId, msg.action);
+        break;
+
+      case 'channel-list':
+        for (const ch of msg.channels) {
+          store.addChannel(ch);
+          await createChannel(ch);
         }
         break;
 
@@ -715,6 +784,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           senderId: peerId,
           ts: Date.now(),
           isOwn: false,
+          channelId: msg.channelId,
           fileRef: {
             id: msg.id,
             name: msg.name,
@@ -895,11 +965,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     const handleOpenManual = () => {
       setShowManualPairing(true);
     };
+    const handleBroadcastReact = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      roomRef.current?.broadcast({
+        type: 'message-react',
+        messageId: detail.messageId,
+        channelId: detail.channelId,
+        emoji: detail.emoji,
+        peerId: detail.peerId,
+        action: detail.action,
+      });
+    };
+
     window.addEventListener('quark-cancel-transfer', handleCancelEvent);
     window.addEventListener('open-manual-pairing', handleOpenManual);
+    window.addEventListener('quark-broadcast-react', handleBroadcastReact);
+
     return () => {
       window.removeEventListener('quark-cancel-transfer', handleCancelEvent);
       window.removeEventListener('open-manual-pairing', handleOpenManual);
+      window.removeEventListener('quark-broadcast-react', handleBroadcastReact);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -907,6 +992,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const handleSendMessage = async (text: string, disappearAfterMs?: number) => {
     const textId = generateId();
     const deleteAt = disappearAfterMs ? Date.now() + disappearAfterMs : undefined;
+    const activeChannelId = store.activeChannelId;
+    const replyingTo = store.replyingTo;
+
+    let replyToRef = undefined;
+    if (replyingTo) {
+      const preview = (replyingTo.text || '').substring(0, 80);
+      let senderHandle = replyingTo.sender;
+      if (!replyingTo.isOwn) {
+        const peer = store.peers.get(replyingTo.senderId);
+        if (peer) {
+          senderHandle = peer.handle || peer.displayName || replyingTo.sender;
+        }
+      }
+      replyToRef = {
+        messageId: replyingTo.id,
+        senderHandle,
+        preview,
+      };
+    }
+
     const newMsg: Message = {
       id: textId,
       roomId,
@@ -917,6 +1022,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       ts: Date.now(),
       isOwn: true,
       deleteAt,
+      channelId: activeChannelId || undefined,
+      replyTo: replyToRef,
     };
 
     store.addMessage(newMsg);
@@ -947,6 +1054,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       senderId: myPeerId,
       ts: Date.now(),
       disappearAfterMs,
+      channelId: activeChannelId || undefined,
+      replyTo: replyToRef,
     };
     roomRef.current?.broadcast(wireMsg);
   };
@@ -954,6 +1063,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   // Action dispatcher: Files
   const handleSendFile = async (file: File) => {
     const fileId = generateId();
+    const activeChannelId = store.activeChannelId;
     const newMsg: Message = {
       id: fileId,
       roomId,
@@ -962,6 +1072,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       senderId: myPeerId,
       ts: Date.now(),
       isOwn: true,
+      channelId: activeChannelId || undefined,
       fileRef: {
         id: fileId,
         name: file.name,
@@ -991,7 +1102,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             (progress) => {
               store.updateFileProgress(fileId, progress);
             },
-            () => cancelledTransfersRef.current.has(fileId)
+            () => cancelledTransfersRef.current.has(fileId),
+            activeChannelId || undefined
           )
         )
       );
@@ -1091,67 +1203,106 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   );
 
   return (
-    <div className="flex w-screen h-[100dvh] overflow-hidden bg-bg-base">
-      {/* Main chat interface */}
-      <div
-        className={cn(
-          "flex-1 flex flex-col min-w-0 h-full relative transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]",
-          store.devModeEnabled && "md:pr-[360px]"
-        )}
-      >
-        <RoomHeader roomId={roomId} />
-        <div className="px-3 pt-2 pb-1">
-          <PeerStatus />
+    <div className="flex flex-col h-screen bg-base overflow-hidden select-none">
+      <RoomHeader
+        roomId={roomId}
+        onToggleChannelSidebar={() => setShowChannelSidebar(!showChannelSidebar)}
+        onToggleMembersList={() => setShowMembersList(!showMembersList)}
+      />
+
+      {/* Middle row — 3 panel layout */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Desktop Channel Sidebar */}
+        <div className="hidden md:block w-60 flex-shrink-0 bg-surface border-r border-border h-full">
+          <ChannelSidebar />
         </div>
 
-        {allPeersFailedICE && (
-          <div className="bg-decay/10 border-b border-decay/30 px-4 py-2 flex items-center justify-between text-xs font-mono text-decay select-none">
-            <span className="type-uppercase-label">All P2P channels failed. Network may require a TURN relay.</span>
+        {/* Mobile Channel Sidebar Drawer Overlay */}
+        {showChannelSidebar && (
+          <div className="md:hidden fixed inset-0 z-40 flex">
+            <div className="w-60 bg-surface h-full border-r border-border shadow-2xl z-50">
+              <ChannelSidebar />
+            </div>
+            <div
+              className="flex-1 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowChannelSidebar(false)}
+            />
           </div>
         )}
-        
-        <MessageList messages={store.messages} roomId={roomId} />
 
-        {store.roomStatus === 'failed' ? (
-          <div className="border-t border-border bg-bg-elevated px-4 py-4 flex flex-col items-center justify-center gap-3 select-none">
-            <p className="type-uppercase-label text-decay">
-              <span>Signaling offline. Connection could not be established.</span>
-            </p>
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={async () => {
-                  store.setRoomStatus('signaling');
-                  try {
-                    await signalingRef.current?.connect();
-                    await signalingRef.current?.joinRoom(roomId);
-                  } catch {
-                    store.setRoomStatus('failed');
-                  }
-                }}
-                className="text-xs h-8 px-4"
-              >
-                Retry connection
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowManualPairing(true)}
-                className="text-xs h-8 px-4 border border-dim text-accretion hover:bg-accretion/10"
-              >
-                Connect offline via QR/Local
-              </Button>
+        {/* Center Panel */}
+        <main className="flex flex-col flex-1 overflow-hidden bg-base relative">
+          <div className="px-3 pt-2 pb-1 bg-surface border-b border-border">
+            <PeerStatus />
+          </div>
+
+          {allPeersFailedICE && (
+            <div className="bg-decay/10 border-b border-decay/30 px-4 py-2 flex items-center justify-between text-xs font-mono text-decay select-none">
+              <span className="type-uppercase-label">All P2P channels failed. Network may require a TURN relay.</span>
+            </div>
+          )}
+
+          <MessageList messages={store.messages} roomId={roomId} />
+
+          {store.roomStatus === 'failed' ? (
+            <div className="border-t border-border bg-bg-elevated px-4 py-4 flex flex-col items-center justify-center gap-3 select-none">
+              <p className="type-uppercase-label text-decay">
+                <span>Signaling offline. Connection could not be established.</span>
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={async () => {
+                    store.setRoomStatus('signaling');
+                    try {
+                      await signalingRef.current?.connect();
+                      await signalingRef.current?.joinRoom(roomId);
+                    } catch {
+                      store.setRoomStatus('failed');
+                    }
+                  }}
+                  className="text-xs h-8 px-4"
+                >
+                  Retry connection
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowManualPairing(true)}
+                  className="text-xs h-8 px-4 border border-dim text-accretion hover:bg-accretion/10"
+                >
+                  Connect offline via QR/Local
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <MessageInput
+              onSendMessage={handleSendMessage}
+              onSendFile={handleSendFile}
+              onTyping={handleTyping}
+              disabled={isInputDisabled}
+              roomId={roomId}
+            />
+          )}
+        </main>
+
+        {/* Desktop Members Sidebar */}
+        <div className="hidden md:block w-50 flex-shrink-0 bg-surface border-l border-border h-full">
+          <MembersList />
+        </div>
+
+        {/* Mobile Members List Drawer Overlay */}
+        {showMembersList && (
+          <div className="md:hidden fixed inset-0 z-40 flex justify-end">
+            <div
+              className="flex-1 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowMembersList(false)}
+            />
+            <div className="w-50 bg-surface h-full border-l border-border shadow-2xl z-50">
+              <MembersList />
             </div>
           </div>
-        ) : (
-          <MessageInput
-            onSendMessage={handleSendMessage}
-            onSendFile={handleSendFile}
-            onTyping={handleTyping}
-            disabled={isInputDisabled}
-            roomId={roomId}
-          />
         )}
       </div>
 

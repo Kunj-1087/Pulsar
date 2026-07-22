@@ -118,7 +118,20 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, roomId }) =>
   const [hasNewMessages, setHasNewMessages] = useState(false);
   const [pillRendered, setPillRendered] = useState(false);
   
-  const { typingPeers } = useChatStore();
+  const { typingPeers, activeChannelId, channels } = useChatStore();
+
+  const activeChannel = channels.find(c => c.id === activeChannelId);
+  const activeChannelName = activeChannel ? activeChannel.name : 'general';
+
+  const channelMessages = useMemo(() => {
+    if (!activeChannelId) return messages;
+    return messages.filter(m => {
+      if (m.channelId) {
+        return m.channelId === activeChannelId;
+      }
+      return activeChannelName === 'general';
+    });
+  }, [messages, activeChannelId, activeChannelName]);
 
   const lastScrollCheckRef = useRef(0);
   
@@ -158,8 +171,8 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, roomId }) =>
   };
 
   const messageGroups = useMemo(() => {
-    return groupMessages(messages);
-  }, [messages]);
+    return groupMessages(channelMessages);
+  }, [channelMessages]);
 
   const flatItems = useMemo(() => {
     const items: RenderableItem[] = [];
@@ -232,12 +245,11 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, roomId }) =>
     if (!containerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
     
-    const lastMsg = messages[messages.length - 1];
+    const lastMsg = channelMessages[channelMessages.length - 1];
     const isOwnLastMessage = lastMsg ? lastMsg.isOwn : false;
     const isNearBottom = scrollHeight - scrollTop - clientHeight <= 250;
 
     if (isOwnLastMessage || isNearBottom) {
-      // Defer index scroll slightly to ensure DOM has computed sizes
       setTimeout(() => {
         if (flatItems.length > 0) {
           rowVirtualizer.scrollToIndex(flatItems.length - 1, { align: 'end' });
@@ -250,7 +262,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, roomId }) =>
       setShowScrollButton(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messages.length, flatItems.length]);
+  }, [channelMessages.length, flatItems.length]);
 
   // Initial scroll to bottom on mount
   useEffect(() => {
@@ -276,43 +288,18 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, roomId }) =>
   }, [hasNewMessages, showScrollButton, pillRendered]);
 
   // Empty state renderer
-  if (messages.length === 0) {
-    const inviteLink = typeof window !== 'undefined'
-      ? `${window.location.origin}/?room=${roomId}`
-      : `https://quark.chat/?room=${roomId}`;
-
+  if (channelMessages.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center select-none overflow-y-auto font-mono">
-        <div className="w-full max-w-[340px] border border-border bg-bg-elevated p-6 rounded shadow-xl flex flex-col items-center gap-4 animate-slide-up">
-          <div className="text-center">
-            <h3 className="type-wordmark text-display text-fg-primary">
-              quark
-            </h3>
-            <p className="type-terminal-msg text-fg-primary mt-2 select-all tracking-wider">
-              {roomId}
-            </p>
-          </div>
-          
-          <div className="bg-fg-primary p-3 rounded-sm">
-            <QRCodeSVG
-              value={inviteLink}
-              size={120}
-              bgColor="#f5f5f5"
-              fgColor="#0a0a0a"
-              level="M"
-            />
-          </div>
-
-          <div className="space-y-2 text-center font-sans">
-            <p className="text-small text-fg-muted leading-relaxed">
-              You are the first here. Share the code or scan the QR to bring in another peer.
-            </p>
-            <div className="text-caption font-mono text-pulse flex items-center justify-center gap-2 select-none animate-pulse">
-              <span className="w-1.5 h-1.5 rounded-full bg-pulse shrink-0 animate-ping" />
-              <span>Waiting for peers...</span>
-            </div>
-          </div>
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center select-none overflow-y-auto">
+        <div className="font-mono text-7xl text-text-muted mb-4 font-bold">
+          #
         </div>
+        <h2 className="text-text-secondary text-lg font-semibold mb-1">
+          This is the start of #{activeChannelName}
+        </h2>
+        <p className="text-text-muted text-sm">
+          Send a message or share a file to get started.
+        </p>
       </div>
     );
   }
