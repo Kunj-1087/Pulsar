@@ -31,6 +31,49 @@ const HTTPS_ENABLED = process.env.HTTPS_ENABLED === 'true';
 const TLS_CERT_PATH = process.env.TLS_CERT_PATH || './certs/lan-cert.pem';
 const TLS_KEY_PATH = process.env.TLS_KEY_PATH || './certs/lan-key.pem';
 
+// Optional Redis Pub/Sub scaling setup
+const REDIS_URL = process.env.REDIS_URL;
+let pubClient = null;
+let subClient = null;
+
+if (REDIS_URL) {
+  try {
+    const Redis = require('ioredis');
+    pubClient = new Redis(REDIS_URL);
+    subClient = new Redis(REDIS_URL);
+    console.log('[Quark] Redis scaling mode enabled. Connected to Redis Pub/Sub.');
+
+    subClient.psubscribe('quark:peer:*', 'quark:room:*', (err) => {
+      if (err) console.error('[Quark Redis] Subscription error:', err);
+    });
+
+    subClient.on('pmessage', (pattern, channel, messageStr) => {
+      try {
+        const payload = JSON.parse(messageStr);
+        if (channel.startsWith('quark:peer:')) {
+          const targetPeerId = channel.replace('quark:peer:', '');
+          wss.clients.forEach((client) => {
+            if (client.readyState === 1 && client._peerId === targetPeerId) {
+              client.send(JSON.stringify(payload.data));
+            }
+          });
+        } else if (channel.startsWith('quark:room:')) {
+          const targetRoomId = channel.replace('quark:room:', '');
+          wss.clients.forEach((client) => {
+            if (client.readyState === 1 && client._roomId === targetRoomId && client._peerId !== payload.senderPeerId) {
+              client.send(JSON.stringify(payload.data));
+            }
+          });
+        }
+      } catch (err) {
+        console.error('[Quark Redis] Parse error on pmessage:', err);
+      }
+    });
+  } catch (err) {
+    console.warn('[Quark] Failed to initialize Redis scaling:', err.message);
+  }
+}
+
 // Simple rolling window rate limiter for IP tracking
 class RollingWindowLimiter {
   constructor(limit, windowMs) {
@@ -323,12 +366,17 @@ wss.on('connection', (ws, req) => {
         logEvent('ROOM_JOIN', clientIp, `Room: ${currentRoom}, Peer: ${peerId}, Size: ${room.size}`);
       } else {
         // Relay to target peer
+        let deliveredLocally = false;
         if (currentRoom && rooms.has(currentRoom)) {
           rooms.get(currentRoom).forEach((peer) => {
             if (peer !== ws && peer.readyState === 1 && peer._peerId === toPeer) {
               peer.send(rawData.toString());
+              deliveredLocally = true;
             }
           });
+        }
+        if (!deliveredLocally && toPeer && pubClient) {
+          pubClient.publish(`quark:peer:${toPeer}`, JSON.stringify({ data: msg }));
         }
       }
     } catch (err) {

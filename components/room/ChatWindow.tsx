@@ -7,15 +7,20 @@ import { FallbackSignalingDriver, SignalingDriver } from '../../lib/signaling';
 import { QuarkRoom } from '../../lib/webrtc';
 import { FileReceiver, decodeBinaryFrame } from '../../lib/fileTransfer';
 import { getMessages, saveMessage, saveFile, saveRoom, cleanupExpiredMessages } from '../../lib/storage';
-import { Message, SignalingMessage, DataChannelMessage } from '../../types';
+import dynamic from 'next/dynamic';
+import { Message, SignalingMessage, DataChannelMessage, PeerConnectionState } from '../../types';
 import { RoomHeader } from './RoomHeader';
 import { PeerStatus } from './PeerStatus';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
-import { DevPanel } from '../dev/DevPanel';
 import { toast } from '../../store/toastStore';
 import { X } from 'lucide-react';
 import { Button } from '../ui/Button';
+
+const DevPanel = dynamic(
+  () => import('../dev/DevPanel').then((m) => m.DevPanel),
+  { ssr: false }
+);
 
 interface ChatWindowProps {
   roomId: string;
@@ -181,6 +186,104 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         store.addMessage(systemWelcome);
       }
 
+      const handlePeerConnectionStateChange = (peerId: string, state: PeerConnectionState) => {
+        const oldPeer = store.peers.get(peerId);
+        store.updatePeer(peerId, { connectionState: state });
+
+        // Centralized room status transition check
+        const currentPeers = Array.from(store.peers.values());
+        const hasFailed = currentPeers.some(p => p.connectionState === 'failed');
+        const hasDisconnected = currentPeers.some(p => p.connectionState === 'disconnected');
+        const allConnected = currentPeers.every(p => p.connectionState === 'connected');
+
+        if (store.roomStatus !== 'reconnecting' && store.roomStatus !== 'failed' && store.roomStatus !== 'closed' && store.roomStatus !== 'closing' && store.roomStatus !== 'signaling') {
+          if (currentPeers.length === 0 || allConnected) {
+            store.setRoomStatus('connected');
+          } else if (hasFailed || hasDisconnected) {
+            store.setRoomStatus('degraded');
+          } else {
+            store.setRoomStatus('connecting');
+          }
+        }
+
+        if (state === 'connected') {
+          const timer = disconnectTimersRef.current.get(peerId);
+          if (timer) {
+            clearTimeout(timer);
+            disconnectTimersRef.current.delete(peerId);
+          }
+
+          if (oldPeer?.connectionState !== 'connected') {
+            const name = oldPeer?.handle ? `@${oldPeer.handle}` : (oldPeer?.displayName || peerId.substring(0, 8));
+            toast.success(`${name} joined. E2EE established.`);
+
+            // Send our peer info immediately
+            if (displayName) {
+              let myHandle = '';
+              let myColor = '';
+              try {
+                const saved = localStorage.getItem('quark_identity');
+                if (saved) {
+                  const parsed = JSON.parse(saved);
+                  myHandle = parsed.handle;
+                  myColor = parsed.peerColor;
+                }
+              } catch {}
+
+              roomRef.current?.sendToPeer(peerId, {
+                type: 'peer-info',
+                peerId: myPeerId,
+                displayName,
+                handle: myHandle,
+                peerColor: myColor,
+              });
+            }
+          }
+        } else if (state === 'disconnected') {
+          if (oldPeer?.connectionState === 'connected' && !disconnectTimersRef.current.has(peerId)) {
+            const timer = setTimeout(() => {
+              disconnectTimersRef.current.delete(peerId);
+              const currentPeer = store.peers.get(peerId);
+              if (currentPeer && currentPeer.connectionState === 'disconnected') {
+                const name = currentPeer.handle ? `@${currentPeer.handle}` : (currentPeer.displayName || peerId.substring(0, 8));
+                
+                 cleanupPeerResources(peerId);
+                 toast.info(`${name} left.`);
+
+                store.addMessage({
+                  id: generateId(),
+                  roomId,
+                  type: 'system',
+                  text: `> peer left: ${name}`,
+                  sender: 'System',
+                  senderId: 'system',
+                  ts: Date.now(),
+                  isOwn: false,
+                });
+              }
+            }, 5000);
+            disconnectTimersRef.current.set(peerId, timer);
+          }
+        } else if (state === 'failed') {
+          const oldPeer = store.peers.get(peerId);
+          const peerName = oldPeer?.displayName || peerId.substring(0, 8);
+          
+          cleanupPeerResources(peerId);
+          toast.warning(`Connection to ${peerName} failed.`);
+
+          store.addMessage({
+            id: generateId(),
+            roomId,
+            type: 'system',
+            text: `> connection failed: ${peerName}`,
+            sender: 'System',
+            senderId: 'system',
+            ts: Date.now(),
+            isOwn: false,
+          });
+        }
+      };
+
       // 3. Setup WebRTC Room Mesh Manager
       const room = new QuarkRoom({
         myId: myPeerId,
@@ -193,103 +296,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         onPeerBinaryMessage: (peerId, arrayBuffer) => {
           handleIncomingBinaryMessage(peerId, arrayBuffer);
         },
-        onPeerStateChange: (peerId, state) => {
-          const oldPeer = store.peers.get(peerId);
-          store.updatePeer(peerId, { connectionState: state });
-
-          // Centralized room status transition check
-          const currentPeers = Array.from(store.peers.values());
-          const hasFailed = currentPeers.some(p => p.connectionState === 'failed');
-          const hasDisconnected = currentPeers.some(p => p.connectionState === 'disconnected');
-          const allConnected = currentPeers.every(p => p.connectionState === 'connected');
-
-          if (store.roomStatus !== 'reconnecting' && store.roomStatus !== 'failed' && store.roomStatus !== 'closed' && store.roomStatus !== 'closing' && store.roomStatus !== 'signaling') {
-            if (currentPeers.length === 0 || allConnected) {
-              store.setRoomStatus('connected');
-            } else if (hasFailed || hasDisconnected) {
-              store.setRoomStatus('degraded');
-            } else {
-              store.setRoomStatus('connecting');
-            }
-          }
-
-          if (state === 'connected') {
-            const timer = disconnectTimersRef.current.get(peerId);
-            if (timer) {
-              clearTimeout(timer);
-              disconnectTimersRef.current.delete(peerId);
-            }
-
-            if (oldPeer?.connectionState !== 'connected') {
-              const name = oldPeer?.handle ? `@${oldPeer.handle}` : (oldPeer?.displayName || peerId.substring(0, 8));
-              toast.success(`${name} joined. E2EE established.`);
-
-              // Send our peer info immediately
-              if (displayName) {
-                let myHandle = '';
-                let myColor = '';
-                try {
-                  const saved = localStorage.getItem('quark_identity');
-                  if (saved) {
-                    const parsed = JSON.parse(saved);
-                    myHandle = parsed.handle;
-                    myColor = parsed.peerColor;
-                  }
-                } catch {}
-
-                roomRef.current?.sendToPeer(peerId, {
-                  type: 'peer-info',
-                  peerId: myPeerId,
-                  displayName,
-                  handle: myHandle,
-                  peerColor: myColor,
-                });
-              }
-            }
-          } else if (state === 'disconnected') {
-            if (oldPeer?.connectionState === 'connected' && !disconnectTimersRef.current.has(peerId)) {
-              const timer = setTimeout(() => {
-                disconnectTimersRef.current.delete(peerId);
-                const currentPeer = store.peers.get(peerId);
-                if (currentPeer && currentPeer.connectionState === 'disconnected') {
-                  const name = currentPeer.handle ? `@${currentPeer.handle}` : (currentPeer.displayName || peerId.substring(0, 8));
-                  
-                   cleanupPeerResources(peerId);
-                   toast.info(`${name} left.`);
-
-                  store.addMessage({
-                    id: generateId(),
-                    roomId,
-                    type: 'system',
-                    text: `> peer left: ${name}`,
-                    sender: 'System',
-                    senderId: 'system',
-                    ts: Date.now(),
-                    isOwn: false,
-                  });
-                }
-              }, 5000);
-              disconnectTimersRef.current.set(peerId, timer);
-            }
-          } else if (state === 'failed') {
-            const oldPeer = store.peers.get(peerId);
-            const peerName = oldPeer?.displayName || peerId.substring(0, 8);
-            
-            cleanupPeerResources(peerId);
-            toast.warning(`Connection to ${peerName} failed.`);
-
-            store.addMessage({
-              id: generateId(),
-              roomId,
-              type: 'system',
-              text: `> connection failed: ${peerName}`,
-              sender: 'System',
-              senderId: 'system',
-              ts: Date.now(),
-              isOwn: false,
-            });
-          }
-        },
+        onPeerStateChange: handlePeerConnectionStateChange,
         onIceLog: (entry) => {
           store.appendIceLog(entry);
         },
@@ -308,6 +315,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         store.setSignalingDriverName(signaling.getActiveDriverName());
 
         if (state === 'connected') {
+          if (!roomRef.current) {
+            roomRef.current = new QuarkRoom({
+              myId: myPeerId,
+              onSignal: (msg) => signalingRef.current?.send(msg),
+              onPeerMessage: (peerId, msg) => handleIncomingDataMessage(peerId, msg),
+              onPeerBinaryMessage: (peerId, buf) => handleIncomingBinaryMessage(peerId, buf),
+              onPeerStateChange: handlePeerConnectionStateChange,
+              onIceLog: (entry) => store.appendIceLog(entry),
+            });
+          }
+
           const peerList = Array.from(store.peers.values());
           if (peerList.length === 0) {
             store.setRoomStatus('connected');
@@ -318,6 +336,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           
           if (store.roomStatus === 'reconnecting') {
             toast.success('Signaling connection restored.');
+            signalingRef.current?.joinRoom(roomId);
           }
         } else if (state === 'reconnecting') {
           store.setRoomStatus('reconnecting');
@@ -432,6 +451,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         store.appendIceLog(`// [Signaling] Joined room. Existing peers: ${msg.existingPeers?.join(', ') || 'None'}`);
         if (msg.existingPeers) {
           store.setRoomStatus('connecting');
+
+          // Prune any orphaned peers in local store that left while disconnected
+          const activePeerSet = new Set(msg.existingPeers);
+          Array.from(store.peers.keys()).forEach((pId) => {
+            if (!activePeerSet.has(pId)) {
+              cleanupPeerResources(pId);
+              store.removePeer(pId);
+            }
+          });
+
           for (const peerId of msg.existingPeers) {
             const isInitiator = myPeerId < peerId;
             
@@ -975,7 +1004,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       </div>
 
       {/* Developer Dashboard slide-out */}
-      <DevPanel onRefreshStats={handleManualRefreshStats} />
+      {store.devModeEnabled && <DevPanel onRefreshStats={handleManualRefreshStats} />}
 
       {/* Keyboard Shortcuts Modal */}
       {showShortcutsModal && (

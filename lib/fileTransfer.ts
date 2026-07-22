@@ -187,6 +187,14 @@ export async function sendFile(
   checkBackpressure: () => Promise<void>,
   encryptionKey?: CryptoKey
 ): Promise<void> {
+  const maxMb = Number(process.env.NEXT_PUBLIC_MAX_FILE_SIZE_MB) || 100;
+  const maxBytes = maxMb * 1024 * 1024;
+  if (file.size > maxBytes) {
+    throw new Error(`File size exceeds maximum allowed limit of ${maxMb}MB`);
+  }
+
+  const sanitizedName = file.name.replace(/[\/\x00-\x1F\x7F]/g, '_').substring(0, 255);
+
   const rawChunkSize = Number(process.env.NEXT_PUBLIC_CHUNK_SIZE_BYTES) || 16384;
   const CLAMP_MIN = 1024;
   const CLAMP_MAX = 65536; // 64KB safe upper bound
@@ -202,7 +210,7 @@ export async function sendFile(
   const metaMsg: DataChannelMessage = {
     type: 'file-meta',
     id: fileId,
-    name: file.name,
+    name: sanitizedName,
     size: file.size,
     mimeType: file.type || 'application/octet-stream',
     totalChunks,

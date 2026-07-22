@@ -1,9 +1,15 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { File, Download, Image as ImageIcon, AlertTriangle, Eye, X } from 'lucide-react';
+import dynamic from 'next/dynamic';
+import { File, Download, Image as ImageIcon, AlertTriangle, Eye } from 'lucide-react';
 import { FileRef } from '../../types';
 import { formatBytes, cn } from '../../lib/utils';
 import { Button } from '../ui/Button';
 import { useChatStore } from '../../store/chatStore';
+
+const FileLightbox = dynamic(
+  () => import('./FileLightbox').then((m) => m.FileLightbox),
+  { ssr: false }
+);
 
 interface FileTransferProps {
   fileRef: FileRef;
@@ -313,47 +319,24 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
       )}
 
       {/* Lightbox full-size image overlay */}
-      {showLightbox && activeUrl && (
-        <div
-          className="fixed inset-0 z-50 bg-bg-base/95 flex items-center justify-center p-4 cursor-zoom-out"
-          onClick={() => setShowLightbox(false)}
-        >
-          <div className="relative max-w-full max-h-full flex flex-col items-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={activeUrl}
-              alt={activeName}
-              className="max-w-[95vw] max-h-[85vh] object-contain border border-border rounded bg-bg-base"
-            />
-            
-            <div className="mt-4 flex gap-4 text-caption font-mono text-fg-muted select-none items-center bg-bg-base/60 px-4 py-2 rounded border border-border/30">
-              <span className="truncate max-w-[200px]">{activeName} ({formatBytes(activeSize)})</span>
-              {imageMessages.length > 1 && (
-                <span className="text-micro text-fg-muted">
-                  Use ← and → to browse
-                </span>
-              )}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDownload();
-                }}
-                className="text-fg-primary hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Save</span>
-              </button>
-            </div>
-            
-            <button
-              onClick={() => setShowLightbox(false)}
-              className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none cursor-pointer p-1 bg-bg-base/60 border border-border/40 rounded-full"
-              aria-label="Close Lightbox"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+      {showLightbox && (
+        <FileLightbox
+          initialFileRef={fileRef}
+          messages={messages}
+          onClose={() => setShowLightbox(false)}
+          onDownload={(targetRef) => {
+            if (targetRef.blob) {
+              const url = URL.createObjectURL(targetRef.blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = targetRef.name;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }
+          }}
+        />
       )}
     </div>
   );
