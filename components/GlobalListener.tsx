@@ -10,11 +10,12 @@ export const GlobalListener: React.FC = () => {
     if (typeof window === 'undefined') return;
 
     const handleError = (event: ErrorEvent) => {
-      console.error('[Quark Global Error]', event.error);
+      console.error('[Quark Global Error]', event.error || event);
       const now = Date.now();
       if (now - lastToastTimeRef.current > 3000) {
         lastToastTimeRef.current = now;
-        toast.error(event.message || 'Unexpected client error.');
+        const msg = event.message && !event.message.includes('[object ') ? event.message : 'Unexpected client error.';
+        toast.error(msg);
       }
     };
 
@@ -23,8 +24,11 @@ export const GlobalListener: React.FC = () => {
       const now = Date.now();
       if (now - lastToastTimeRef.current > 3000) {
         lastToastTimeRef.current = now;
-        const msg = event.reason?.message || String(event.reason);
-        toast.error(msg || 'Async operation failed.');
+        let msg = event.reason?.message || (typeof event.reason === 'string' ? event.reason : null);
+        if (!msg || msg.includes('[object ')) {
+          msg = 'Async connection operation issue.';
+        }
+        toast.error(msg);
       }
     };
 

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useChatStore } from '../../store/chatStore';
 
 export const MembersList: React.FC = () => {
-  const { peers, myPeerId } = useChatStore();
+  const { peers } = useChatStore();
   const [localIdentity, setLocalIdentity] = useState<{ handle: string; peerColor: string } | null>(null);
 
   useEffect(() => {
@@ -19,10 +19,11 @@ export const MembersList: React.FC = () => {
   }, []);
 
   const peerList = Array.from(peers.values());
-  const totalCount = peerList.length + 1; // peers + self
+  const onlinePeers = peerList.filter((p) => p.connectionState === 'connected');
+  const totalCount = onlinePeers.length + 1; // connected peers + self
 
-  // Sort: alphabetical by handle/displayName
-  const sortedPeers = [...peerList].sort((a, b) => {
+  // Sort online peers: alphabetical by handle/displayName
+  const sortedPeers = [...onlinePeers].sort((a, b) => {
     const nameA = a.handle || a.displayName || a.peerId;
     const nameB = b.handle || b.displayName || b.peerId;
     return nameA.localeCompare(nameB);
@@ -52,9 +53,8 @@ export const MembersList: React.FC = () => {
           </span>
         </div>
 
-        {/* Remote peers */}
+        {/* Remote online peers */}
         {sortedPeers.map((peer) => {
-          const isOnline = peer.connectionState === 'connected';
           const name = peer.handle || peer.displayName || peer.peerId.substring(0, 8);
 
           return (
@@ -62,16 +62,8 @@ export const MembersList: React.FC = () => {
               key={peer.peerId}
               className="h-9 flex items-center gap-2.5 px-1 rounded hover:bg-elevated transition-colors"
             >
-              <span
-                className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                  isOnline ? 'bg-accent' : 'bg-text-muted'
-                }`}
-              />
-              <span
-                className={`text-[13px] truncate ${
-                  isOnline ? 'text-text-secondary' : 'text-text-muted italic'
-                }`}
-              >
+              <span className="w-2 h-2 rounded-full flex-shrink-0 bg-accent" />
+              <span className="text-[13px] text-text-secondary truncate">
                 {name}
               </span>
             </div>

@@ -277,16 +277,17 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
               });
             }
           }
-        } else if (state === 'disconnected') {
-          if (oldPeer?.connectionState === 'connected' && !disconnectTimersRef.current.has(peerId)) {
+        } else if (state === 'disconnected' || state === 'failed') {
+          if (!disconnectTimersRef.current.has(peerId)) {
             const timer = setTimeout(() => {
               disconnectTimersRef.current.delete(peerId);
               const currentPeer = store.peers.get(peerId);
-              if (currentPeer && currentPeer.connectionState === 'disconnected') {
+              if (currentPeer && (currentPeer.connectionState === 'disconnected' || currentPeer.connectionState === 'failed')) {
                 const name = currentPeer.handle ? `@${currentPeer.handle}` : (currentPeer.displayName || peerId.substring(0, 8));
-                
-                 cleanupPeerResources(peerId);
-                 toast.info(`${name} left.`);
+
+                cleanupPeerResources(peerId);
+                store.removePeer(peerId);
+                toast.info(`${name} left.`);
 
                 store.addMessage({
                   id: generateId(),
@@ -302,23 +303,6 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             }, 5000);
             disconnectTimersRef.current.set(peerId, timer);
           }
-        } else if (state === 'failed') {
-          const oldPeer = store.peers.get(peerId);
-          const peerName = oldPeer?.displayName || peerId.substring(0, 8);
-          
-          cleanupPeerResources(peerId);
-          toast.warning(`Connection to ${peerName} failed.`);
-
-          store.addMessage({
-            id: generateId(),
-            roomId,
-            type: 'system',
-            text: `> connection failed: ${peerName}`,
-            sender: 'System',
-            senderId: 'system',
-            ts: Date.now(),
-            isOwn: false,
-          });
         }
       };
 
@@ -362,39 +346,24 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             });
           }
 
+          toast.dismiss('signaling-status');
           const peerList = Array.from(store.peers.values());
           if (peerList.length === 0) {
             store.setRoomStatus('connected');
           } else {
             store.setRoomStatus('connecting');
           }
-          
-          if (store.roomStatus === 'reconnecting') {
-            toast.success('Signaling connection restored.');
-            signalingRef.current?.joinRoom(roomId);
-          }
+
+          signalingRef.current?.joinRoom(roomId);
         } else if (state === 'reconnecting') {
-          store.setRoomStatus('reconnecting');
-          failAllFileTransfers();
-          
-          typingTimersRef.current.forEach((t) => clearTimeout(t));
-          typingTimersRef.current.clear();
-          
-          roomRef.current?.close();
-          
-          const peersToCleanup = Array.from(store.peers.keys());
-          peersToCleanup.forEach((peerId) => {
-            store.removePeer(peerId);
-          });
-          
-          toast.warning('Signaling connection lost. Reconnecting...');
+          toast.warning('Signaling connection lost. Reconnecting…', { id: 'signaling-status' });
         } else if (state === 'disconnected') {
           if (store.roomStatus !== 'closed' && store.roomStatus !== 'closing') {
             store.setRoomStatus('reconnecting');
           }
         } else if (state === 'failed') {
           store.setRoomStatus('failed');
-          toast.error('Signaling offline. Check your network.');
+          toast.error('Signaling offline. Check your network.', { id: 'signaling-status' });
         }
       });
 
