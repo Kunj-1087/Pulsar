@@ -23,7 +23,7 @@ export const PWAInstallPrompt: React.FC = () => {
       e.preventDefault();
       deferredPromptRef.current = e as BeforeInstallPromptEvent;
 
-      if (sessionStorage.getItem('pulsar_install_prompt_dismissed') === 'true') {
+      if (sessionStorage.getItem('quark_install_prompt_dismissed') === 'true') {
         return;
       }
 
@@ -31,9 +31,9 @@ export const PWAInstallPrompt: React.FC = () => {
         if (!deferredPromptRef.current) return;
 
         toast.info(
-          'Install Pulsar on your home screen for a full screen standalone experience.',
+          'Install Quark on your home screen for a standalone experience.',
           {
-            title: 'Install Pulsar',
+            title: 'Install Quark',
             duration: 15000,
             action: {
               label: 'Install',
@@ -43,7 +43,7 @@ export const PWAInstallPrompt: React.FC = () => {
                 
                 promptEvent.prompt();
                 const choiceResult = await promptEvent.userChoice;
-                console.log(`[Pulsar PWA] User prompt choice: ${choiceResult.outcome}`);
+                console.log(`[Quark PWA] User prompt choice: ${choiceResult.outcome}`);
                 
                 deferredPromptRef.current = null;
               },
@@ -51,7 +51,7 @@ export const PWAInstallPrompt: React.FC = () => {
           }
         );
         
-        sessionStorage.setItem('pulsar_install_prompt_dismissed', 'true');
+        sessionStorage.setItem('quark_install_prompt_dismissed', 'true');
       }, 60000); // 60 seconds
 
       return () => clearTimeout(timer);

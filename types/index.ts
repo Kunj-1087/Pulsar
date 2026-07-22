@@ -1,3 +1,5 @@
+export const PROTOCOL_VERSION = 1;
+
 export type MessageType = 'text' | 'file-meta' | 'file-complete' | 'file-cancel' | 'typing' | 'peer-info' | 'system';
 
 export interface Message {
@@ -5,11 +7,12 @@ export interface Message {
   roomId: string;
   type: 'text' | 'file' | 'system';
   text?: string;
-  sender: string;          // display name
-  senderId: string;        // peerId
+  sender: string;
+  senderId: string;
   ts: number;
   isOwn: boolean;
   fileRef?: FileRef;
+  deleteAt?: number;
 }
 
 export interface FileRef {
@@ -35,6 +38,7 @@ export interface Peer {
   isHost: boolean;
   e2eeStatus?: 'pending' | 'established' | 'failed';
   e2eeSafetyNumber?: string;
+  protocolVersion?: number;
 }
 
 export interface Room {
@@ -42,17 +46,18 @@ export interface Room {
   displayName: string;
   isHost: boolean;
   createdAt: number;
+  roomPassword?: string;
 }
 
 // WebRTC DataChannel message protocol
 export type DataChannelMessage =
-  | { type: 'message'; id: string; text: string; sender: string; senderId: string; ts: number }
-  | { type: 'file-meta'; id: string; name: string; size: number; mimeType: string; totalChunks: number; sender: string }
-  | { type: 'file-complete'; id: string }
-  | { type: 'file-cancel'; id: string; reason?: string }
-  | { type: 'typing'; senderId: string; displayName: string; isTyping: boolean }
-  | { type: 'peer-info'; peerId: string; displayName: string; handle?: string; peerColor?: string }
-  | { type: 'key-exchange'; publicKey: JsonWebKey };
+  | { type: 'message'; id: string; text: string; sender: string; senderId: string; ts: number; protocolVersion?: number; seq?: number; disappearAfterMs?: number }
+  | { type: 'file-meta'; id: string; name: string; size: number; mimeType: string; totalChunks: number; sender: string; protocolVersion?: number; seq?: number }
+  | { type: 'file-complete'; id: string; protocolVersion?: number; seq?: number }
+  | { type: 'file-cancel'; id: string; reason?: string; protocolVersion?: number; seq?: number }
+  | { type: 'typing'; senderId: string; displayName: string; isTyping: boolean; protocolVersion?: number; seq?: number }
+  | { type: 'peer-info'; peerId: string; displayName: string; handle?: string; peerColor?: string; protocolVersion?: number; seq?: number }
+  | { type: 'key-exchange'; publicKey: JsonWebKey; protocolVersion?: number; seq?: number };
 
 // Signaling protocol (compatible with Ably)
 export type SignalingMessage =
@@ -78,4 +83,11 @@ export interface ConnectionStats {
   remoteCandidateType?: string;
   turnUsed?: boolean;
   turnCandidatesGathered?: boolean;
+  e2eeStatus?: string;
+  e2eeSafetyNumber?: string;
+  e2eeMessagesEncrypted?: number;
+  e2eeMessagesDecrypted?: number;
+  e2eeDecryptionFailures?: number;
+  protocolVersion?: number;
+  remoteProtocolVersion?: number;
 }

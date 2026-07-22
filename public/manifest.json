@@ -1,7 +1,7 @@
 {
-  "name": "Pulsar",
-  "short_name": "Pulsar",
-  "description": "Signal travels. No server needed.",
+  "name": "Quark",
+  "short_name": "Quark",
+  "description": "Peer-to-peer chat. Nothing in between.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#191919",

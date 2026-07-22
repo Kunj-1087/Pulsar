@@ -10,21 +10,21 @@ export const GlobalListener: React.FC = () => {
     if (typeof window === 'undefined') return;
 
     const handleError = (event: ErrorEvent) => {
-      console.error('[Pulsar Global Error]', event.error);
+      console.error('[Quark Global Error]', event.error);
       const now = Date.now();
       if (now - lastToastTimeRef.current > 3000) {
         lastToastTimeRef.current = now;
-        toast.error(event.message || 'An unexpected client error occurred.', { title: 'System Alert' });
+        toast.error(event.message || 'Unexpected client error.');
       }
     };
 
     const handleRejection = (event: PromiseRejectionEvent) => {
-      console.error('[Pulsar Global Rejection]', event.reason);
+      console.error('[Quark Global Rejection]', event.reason);
       const now = Date.now();
       if (now - lastToastTimeRef.current > 3000) {
         lastToastTimeRef.current = now;
         const msg = event.reason?.message || String(event.reason);
-        toast.error(msg || 'An asynchronous operation failed.', { title: 'Asynchronous Error' });
+        toast.error(msg || 'Async operation failed.');
       }
     };
 

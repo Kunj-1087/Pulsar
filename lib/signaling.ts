@@ -1,9 +1,10 @@
 import { SignalingMessage } from '../types';
+import { getSignalingUrl } from './utils';
 
 type MessageHandler = (msg: SignalingMessage) => void;
 type StateChangeHandler = (state: 'connected' | 'disconnected' | 'reconnecting' | 'failed') => void;
 
-export class PulsarSignaling {
+export class QuarkSignaling {
   private ws: WebSocket | null = null;
   private messageHandler: MessageHandler | null = null;
   private stateChangeHandler: StateChangeHandler | null = null;
@@ -19,7 +20,15 @@ export class PulsarSignaling {
 
   constructor(peerId: string) {
     this.peerId = peerId;
-    this.url = process.env.NEXT_PUBLIC_SIGNALING_WS_URL || 'ws://localhost:8080';
+    // Use getSignalingUrl() which auto-derives the URL from window.location when needed.
+    // Falls back to NEXT_PUBLIC_SIGNALING_WS_URL in online mode.
+    // In offline mode or when window is available, it derives ws:// or wss:// + hostname automatically.
+    try {
+      this.url = getSignalingUrl() || 'ws://localhost:8080';
+    } catch {
+      // Fallback if getSignalingUrl() throws (should not happen in practice)
+      this.url = process.env.NEXT_PUBLIC_SIGNALING_WS_URL || 'ws://localhost:8080';
+    }
   }
 
   private setStatus(state: 'connected' | 'disconnected' | 'reconnecting' | 'failed') {
@@ -40,7 +49,7 @@ export class PulsarSignaling {
     const currentGen = ++this.generation;
 
     return new Promise((resolve, reject) => {
-      console.log(`[Pulsar Signaling] Connecting to signaling server. Gen: ${currentGen}`);
+      console.log(`[Quark Signaling] Connecting to signaling server. Gen: ${currentGen}`);
       this.ws = new WebSocket(this.url);
 
       this.ws.onopen = () => {
@@ -48,7 +57,7 @@ export class PulsarSignaling {
           this.ws?.close();
           return;
         }
-        console.log('[Pulsar Signaling] Connected to signaling server');
+        console.log('[Quark Signaling] Connected to signaling server');
         this.reconnectAttempts = 0;
         this.setStatus('connected');
         resolve();
@@ -58,23 +67,23 @@ export class PulsarSignaling {
         if (currentGen !== this.generation) return;
         try {
           const msg = JSON.parse(event.data) as SignalingMessage;
-          console.log('[Pulsar Signaling] Received:', msg.type, msg);
+          console.log('[Quark Signaling] Received:', msg.type, msg);
           this.messageHandler?.(msg);
         } catch (err) {
-          console.error('[Pulsar Signaling] Parse error:', err);
+          console.error('[Quark Signaling] Parse error:', err);
         }
       };
 
       this.ws.onerror = (err) => {
         if (currentGen !== this.generation) return;
-        console.error('[Pulsar Signaling] WebSocket error:', err);
+        console.error('[Quark Signaling] WebSocket error:', err);
         this.setStatus('failed');
         reject(err);
       };
 
       this.ws.onclose = () => {
         if (currentGen !== this.generation) return;
-        console.log('[Pulsar Signaling] Disconnected from signaling server');
+        console.log('[Quark Signaling] Disconnected from signaling server');
         this.setStatus('disconnected');
         if (!this.intentionalClose) {
           this.handleReconnect();
@@ -97,14 +106,14 @@ export class PulsarSignaling {
     const finalDelay = delay + jitter;
 
     this.reconnectAttempts++;
-    console.log(`[Pulsar Signaling] Reconnecting in ${Math.round(finalDelay)}ms (attempt ${this.reconnectAttempts})`);
+    console.log(`[Quark Signaling] Reconnecting in ${Math.round(finalDelay)}ms (attempt ${this.reconnectAttempts})`);
     
     this.setStatus('reconnecting');
 
     this.reconnectTimer = setTimeout(() => {
       if (this.intentionalClose) return;
       const currentGen = ++this.generation;
-      console.log(`[Pulsar Signaling] Reconnect attempt start. Gen: ${currentGen}`);
+      console.log(`[Quark Signaling] Reconnect attempt start. Gen: ${currentGen}`);
       this.ws = new WebSocket(this.url);
 
       this.ws.onopen = () => {
@@ -112,7 +121,7 @@ export class PulsarSignaling {
           this.ws?.close();
           return;
         }
-        console.log('[Pulsar Signaling] Reconnected to signaling server');
+        console.log('[Quark Signaling] Reconnected to signaling server');
         this.reconnectAttempts = 0;
         this.setStatus('connected');
         if (this.roomId) {
@@ -124,21 +133,21 @@ export class PulsarSignaling {
         if (currentGen !== this.generation) return;
         try {
           const msg = JSON.parse(event.data) as SignalingMessage;
-          console.log('[Pulsar Signaling] Received (reconnect):', msg.type, msg);
+          console.log('[Quark Signaling] Received (reconnect):', msg.type, msg);
           this.messageHandler?.(msg);
         } catch (err) {
-          console.error('[Pulsar Signaling] Parse error (reconnect):', err);
+          console.error('[Quark Signaling] Parse error (reconnect):', err);
         }
       };
 
       this.ws.onerror = (err) => {
         if (currentGen !== this.generation) return;
-        console.error('[Pulsar Signaling] WebSocket error (reconnect):', err);
+        console.error('[Quark Signaling] WebSocket error (reconnect):', err);
       };
 
       this.ws.onclose = () => {
         if (currentGen !== this.generation) return;
-        console.log('[Pulsar Signaling] Reconnect socket closed unexpectedly');
+        console.log('[Quark Signaling] Reconnect socket closed unexpectedly');
         this.setStatus('disconnected');
         this.handleReconnect();
       };
@@ -153,10 +162,10 @@ export class PulsarSignaling {
   send(msg: SignalingMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       const str = JSON.stringify(msg);
-      console.log('[Pulsar Signaling] Sending:', msg.type, msg);
+      console.log('[Quark Signaling] Sending:', msg.type, msg);
       this.ws.send(str);
     } else {
-      console.warn('[Pulsar Signaling] Cannot send — WebSocket not open. State:', this.ws?.readyState);
+      console.warn('[Quark Signaling] Cannot send — WebSocket not open. State:', this.ws?.readyState);
     }
   }
 

@@ -93,13 +93,13 @@ const TypingIndicator: React.FC = () => {
       className="w-full flex flex-col mb-1 items-start transition-opacity duration-150 ease-in-out"
       style={{ opacity: isTyping ? 1 : 0 }}
     >
-      <span className="text-[11px] font-mono text-text-muted ml-3 mb-1 select-none">
+      <span className="text-caption font-mono text-fg-muted ml-3 mb-1 select-none">
         {senderName} is typing...
       </span>
-      <div className="bg-[#1f1f1f] border border-border-default/60 rounded-[12px_12px_12px_4px] px-4 py-3 flex items-center gap-1.5 h-8 ml-3">
-        <span className="w-[5px] h-[5px] rounded-full bg-[#7a7a7a] pulsar-typing-dot-1" />
-        <span className="w-[5px] h-[5px] rounded-full bg-[#7a7a7a] pulsar-typing-dot-2" />
-        <span className="w-[5px] h-[5px] rounded-full bg-[#7a7a7a] pulsar-typing-dot-3" />
+      <div className="bg-bg-hover border border-border/60 rounded-[12px_12px_12px_4px] px-4 py-3 flex items-center gap-1.5 h-8 ml-3">
+        <span className="w-[5px] h-[5px] rounded-full bg-fg-subtle quark-typing-dot-1" />
+        <span className="w-[5px] h-[5px] rounded-full bg-fg-subtle quark-typing-dot-2" />
+        <span className="w-[5px] h-[5px] rounded-full bg-fg-subtle quark-typing-dot-3" />
       </div>
     </div>
   );
@@ -279,37 +279,37 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, roomId }) =>
   if (messages.length === 0) {
     const inviteLink = typeof window !== 'undefined'
       ? `${window.location.origin}/?room=${roomId}`
-      : `https://pulsar.chat/?room=${roomId}`;
+      : `https://quark.chat/?room=${roomId}`;
 
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center select-none overflow-y-auto font-mono">
-        <div className="w-full max-w-[340px] border border-border-default bg-[#161616] p-6 rounded shadow-xl flex flex-col items-center gap-4 animate-[pulsar-toast-in_250ms_ease_forwards]">
+        <div className="w-full max-w-[340px] border border-border bg-bg-elevated p-6 rounded shadow-xl flex flex-col items-center gap-4 animate-slide-up">
           <div className="text-center">
-            <h3 className="text-xs uppercase tracking-wider text-text-bright font-bold">
-              Room Created
+            <h3 className="type-wordmark text-display text-fg-primary">
+              quark
             </h3>
-            <p className="text-[10px] text-text-muted mt-1 leading-normal uppercase">
-              Room Code: <span className="text-text-bright font-bold select-all tracking-wider">{roomId}</span>
+            <p className="type-terminal-msg text-fg-primary mt-2 select-all tracking-wider">
+              {roomId}
             </p>
           </div>
           
-          <div className="bg-[#e6e8e6] p-3 rounded-sm">
+          <div className="bg-fg-primary p-3 rounded-sm">
             <QRCodeSVG
               value={inviteLink}
               size={120}
-              bgColor="#e6e8e6"
-              fgColor="#191919"
+              bgColor="#f5f5f5"
+              fgColor="#0a0a0a"
               level="M"
             />
           </div>
 
           <div className="space-y-2 text-center font-sans">
-            <p className="text-[11px] text-text-muted leading-relaxed">
-              Share the room code or send the link to invite your peers directly.
+            <p className="text-small text-fg-muted leading-relaxed">
+              You are the first here. Share the code or scan the QR to bring in another peer.
             </p>
-            <div className="text-[10px] font-mono text-status-yellow flex items-center justify-center gap-2 select-none animate-pulse">
-              <span className="w-1.5 h-1.5 rounded-full bg-status-yellow shrink-0 animate-ping" />
-              <span>WAITING FOR PEERS TO JOIN...</span>
+            <div className="text-caption font-mono text-pulse flex items-center justify-center gap-2 select-none animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-pulse shrink-0 animate-ping" />
+              <span>Waiting for peers...</span>
             </div>
           </div>
         </div>
@@ -354,7 +354,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, roomId }) =>
               >
                 {item.type === 'date' && (
                   <div className="w-full flex justify-center py-4 select-none">
-                    <span className="text-[10px] font-mono text-text-muted px-2 py-0.5 border border-border-default bg-[#161616]/40 rounded-sm">
+                    <span className="text-micro font-mono text-fg-muted px-2 py-0.5 border border-border bg-bg-elevated/40 rounded-sm">
                       {item.dateStr}
                     </span>
                   </div>
@@ -380,8 +380,8 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, roomId }) =>
       {pillRendered && (
         <button
           onClick={scrollToBottom}
-          className={`absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-[14px] py-1.5 bg-[#242424] border border-[#2e2e2e] text-[#ced0ce] hover:text-[#e6e8e6] rounded-[20px] font-sans text-xs shadow-lg transition-colors focus:outline-none z-10 select-none ${
-            hasNewMessages && showScrollButton ? 'pulsar-pill-visible' : 'pulsar-pill-hidden'
+          className={`absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3.5 py-1.5 bg-bg-hover border border-border text-fg-secondary hover:text-fg-primary rounded-full font-sans text-caption shadow-lg transition-colors focus:outline-none z-10 select-none ${
+            hasNewMessages && showScrollButton ? 'quark-pill-visible' : 'quark-pill-hidden'
           }`}
           title="Scroll to bottom"
           aria-label="Scroll to bottom"

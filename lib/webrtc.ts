@@ -1,4 +1,4 @@
-import { DataChannelMessage, SignalingMessage, ConnectionStats, PeerConnectionState } from '../types';
+import { DataChannelMessage, SignalingMessage, ConnectionStats, PeerConnectionState, PROTOCOL_VERSION } from '../types';
 import {
   sendFile,
   encodeBinaryFrame,
@@ -18,7 +18,7 @@ import {
   deriveSafetyNumber
 } from './crypto';
 
-export class PulsarPeer {
+export class QuarkPeer {
   peerConnection!: RTCPeerConnection;
   dataChannel: RTCDataChannel | null = null;
   myId: string;
@@ -55,6 +55,10 @@ export class PulsarPeer {
   public e2eeMessagesEncrypted = 0;
   public e2eeMessagesDecrypted = 0;
 
+  private sendSeq = 0;
+  private lastRecvSeq = -1;
+  public remoteProtocolVersion = 0;
+
   constructor(config: {
     peerId: string;
     myId: string;
@@ -81,37 +85,45 @@ export class PulsarPeer {
    * Initializes the RTCPeerConnection and setups handlers.
    */
   private initialize() {
-    console.log(`[Pulsar WebRTC] Creating RTCPeerConnection for peer: ${this.peerId}`);
+    console.log(`[Quark WebRTC] Creating RTCPeerConnection for peer: ${this.peerId}`);
+    
+    const isOffline = typeof window !== 'undefined' && process.env.NEXT_PUBLIC_OFFLINE_MODE === 'true';
     
     // Dynamic ICE servers compilation
     const iceServers: RTCIceServer[] = [];
     
-    // 1. Add STUN
-    const stunServerEnv = process.env.NEXT_PUBLIC_STUN_SERVER || 'stun:stun.l.google.com:19302';
-    stunServerEnv.split(',').forEach((url) => {
-      if (url.trim()) {
-        iceServers.push({ urls: url.trim() });
-      }
-    });
-
-    // 2. Add TURN
-    const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
-    const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
-    const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
-
-    if (turnUrl && turnUsername && turnCredential) {
-      turnUrl.split(',').forEach((url) => {
+    // In offline LAN mode, skip STUN and TURN entirely
+    if (isOffline) {
+      console.log(`[Quark WebRTC] Offline LAN mode enabled. Skipping STUN/TURN configuration for peer: ${this.peerId}`);
+      this.onIceLog(`[Init] Offline mode: skipping STUN/TURN configuration`);
+    } else {
+      // 1. Add STUN
+      const stunServerEnv = process.env.NEXT_PUBLIC_STUN_SERVER || 'stun:stun.l.google.com:19302';
+      stunServerEnv.split(',').forEach((url) => {
         if (url.trim()) {
-          iceServers.push({
-            urls: url.trim(),
-            username: turnUsername,
-            credential: turnCredential,
-          });
+          iceServers.push({ urls: url.trim() });
         }
       });
-      console.log(`[Pulsar WebRTC] TURN relay configured successfully for peer: ${this.peerId}`);
-    } else if (turnUrl || turnUsername || turnCredential) {
-      console.warn(`[Pulsar WebRTC] Incomplete TURN configuration for peer ${this.peerId}. URL, username, and credentials must all be present.`);
+
+      // 2. Add TURN
+      const turnUrl = process.env.NEXT_PUBLIC_TURN_URL;
+      const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
+      const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+
+      if (turnUrl && turnUsername && turnCredential) {
+        turnUrl.split(',').forEach((url) => {
+          if (url.trim()) {
+            iceServers.push({
+              urls: url.trim(),
+              username: turnUsername,
+              credential: turnCredential,
+            });
+          }
+        });
+        console.log(`[Quark WebRTC] TURN relay configured successfully for peer: ${this.peerId}`);
+      } else if (turnUrl || turnUsername || turnCredential) {
+        console.warn(`[Quark WebRTC] Incomplete TURN configuration for peer ${this.peerId}. URL, username, and credentials must all be present.`);
+      }
     }
 
     const config: RTCConfiguration = {
@@ -120,7 +132,7 @@ export class PulsarPeer {
     };
 
     if (process.env.NEXT_PUBLIC_FORCE_RELAY === 'true') {
-      console.log(`[Pulsar WebRTC] Forcing "relay" transport policy for peer ${this.peerId}`);
+      console.log(`[Quark WebRTC] Forcing "relay" transport policy for peer ${this.peerId}`);
       config.iceTransportPolicy = 'relay';
     }
 
@@ -136,7 +148,7 @@ export class PulsarPeer {
         if (match) {
           type = match[1];
         }
-        console.log(`[Pulsar WebRTC] Gathered local ICE candidate (${type}) for peer ${this.peerId}:`, candStr);
+        console.log(`[Quark WebRTC] Gathered local ICE candidate (${type}) for peer ${this.peerId}:`, candStr);
         this.onIceLog(`[ICE] Local candidate gathered: type=${type}`);
         this.onIceCandidate?.(event.candidate.toJSON());
       }
@@ -145,7 +157,7 @@ export class PulsarPeer {
     // Connection state changes
     this.peerConnection.onconnectionstatechange = () => {
       const state = this.peerConnection.connectionState;
-      console.log(`[Pulsar WebRTC] Connection state changed for peer ${this.peerId} to: ${state}`);
+      console.log(`[Quark WebRTC] Connection state changed for peer ${this.peerId} to: ${state}`);
       this.onIceLog(`[State] Connection state changed to: ${state}`);
       
       let mappedState: PeerConnectionState = 'new';
@@ -170,15 +182,15 @@ export class PulsarPeer {
 
     // Data Channel Setup
     if (this.isInitiator) {
-      console.log(`[Pulsar WebRTC] Initiating data channel 'pulsar-data' for peer ${this.peerId}`);
-      this.onIceLog(`[DataChannel] Initiating data channel 'pulsar-data'`);
-      this.dataChannel = this.peerConnection.createDataChannel('pulsar-data', {
+      console.log(`[Quark WebRTC] Initiating data channel 'quark-data' for peer ${this.peerId}`);
+      this.onIceLog(`[DataChannel] Initiating data channel 'quark-data'`);
+      this.dataChannel = this.peerConnection.createDataChannel('quark-data', {
         ordered: true,
       });
       this.setupDataChannelHandlers(this.dataChannel);
     } else {
       this.peerConnection.ondatachannel = (event) => {
-        console.log(`[Pulsar WebRTC] Received remote data channel '${event.channel.label}' from peer ${this.peerId}`);
+        console.log(`[Quark WebRTC] Received remote data channel '${event.channel.label}' from peer ${this.peerId}`);
         this.onIceLog(`[DataChannel] Received remote data channel: ${event.channel.label}`);
         this.dataChannel = event.channel;
         this.setupDataChannelHandlers(this.dataChannel);
@@ -217,7 +229,7 @@ export class PulsarPeer {
     channel.bufferedAmountLowThreshold = 65536; // 64KB backpressure trigger threshold
 
     channel.onopen = async () => {
-      console.log(`[Pulsar WebRTC] DataChannel '${channel.label}' is OPEN for peer ${this.peerId}`);
+      console.log(`[Quark WebRTC] DataChannel '${channel.label}' is OPEN for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Data channel is OPEN`);
       this.onConnectionStateChange?.('connected');
       
@@ -238,7 +250,7 @@ export class PulsarPeer {
         });
         this.onIceLog(`[E2EE] Local public key sent via key-exchange message`);
       } catch (err) {
-        console.error('[Pulsar E2EE] Failed to generate/export local keys:', err);
+        console.error('[Quark E2EE] Failed to generate/export local keys:', err);
         this.e2eeStatus = 'failed';
         useChatStore.getState().updatePeer(this.peerId, {
           e2eeStatus: 'failed'
@@ -247,7 +259,7 @@ export class PulsarPeer {
     };
 
     channel.onclose = () => {
-      console.log(`[Pulsar WebRTC] DataChannel '${channel.label}' is CLOSED for peer ${this.peerId}`);
+      console.log(`[Quark WebRTC] DataChannel '${channel.label}' is CLOSED for peer ${this.peerId}`);
       this.onIceLog(`[DataChannel] Data channel is CLOSED`);
       if (this.resumeReject) {
         this.resumeReject(new Error('Data channel closed'));
@@ -258,7 +270,7 @@ export class PulsarPeer {
     };
 
     channel.onerror = (error) => {
-      console.error(`[Pulsar WebRTC] DataChannel '${channel.label}' Error for peer ${this.peerId}:`, error);
+      console.error(`[Quark WebRTC] DataChannel '${channel.label}' Error for peer ${this.peerId}:`, error);
       this.onIceLog(`[DataChannel Error] ${JSON.stringify(error)}`);
       if (this.resumeReject) {
         this.resumeReject(new Error('Data channel error'));
@@ -293,15 +305,15 @@ export class PulsarPeer {
           }
           
           if (this.e2eeStatus === 'established') {
-            console.warn(`[Pulsar E2EE] Dropping unencrypted plaintext control string received after key agreement: ${msg.type}`);
+            console.warn(`[Quark E2EE] Dropping unencrypted plaintext control string received after key agreement: ${msg.type}`);
             return;
           }
           
-          console.warn(`[Pulsar E2EE] Dropping application message received before key agreement: ${msg.type}`);
+          console.warn(`[Quark E2EE] Dropping application message received before key agreement: ${msg.type}`);
         } else if (rawData instanceof ArrayBuffer) {
           this.bytesReceivedAccumulator += rawData.byteLength;
           if (rawData.byteLength < 3) {
-            console.warn('[Pulsar E2EE] Received oversized or malformed binary packet');
+            console.warn('[Quark E2EE] Received oversized or malformed binary packet');
             return;
           }
           const view = new DataView(rawData);
@@ -309,15 +321,15 @@ export class PulsarPeer {
           const version = view.getUint8(1);
           const frameType = view.getUint8(2);
           
-          if (magic !== 0x50 || version !== 0x01) {
-            console.warn('[Pulsar E2EE] Invalid binary magic/version');
+          if (magic !== 0x51 || version !== 0x01) {
+            console.warn('[Quark E2EE] Invalid binary magic/version');
             return;
           }
           
           if (frameType === 0x01) {
             // Encrypted control frame
             if (!this.aesKey) {
-              console.warn('[Pulsar E2EE] Received encrypted control frame before key agreement complete');
+              console.warn('[Quark E2EE] Received encrypted control frame before key agreement complete');
               return;
             }
             try {
@@ -325,15 +337,17 @@ export class PulsarPeer {
               const plaintextStr = await decryptMessage(this.aesKey, iv, ciphertext);
               this.e2eeMessagesDecrypted++;
               const msg = JSON.parse(plaintextStr) as DataChannelMessage;
-              this.onMessage?.(msg);
+              if (this.trackReceivedMessage(msg)) {
+                this.onMessage?.(msg);
+              }
             } catch (err) {
-              console.error('[Pulsar E2EE] Failed to decrypt control frame:', err);
+              console.error('[Quark E2EE] Failed to decrypt control frame:', err);
               this.e2eeDecryptionFailures++;
             }
           } else if (frameType === 0x02) {
             // Encrypted file chunk frame
             if (!this.aesKey) {
-              console.warn('[Pulsar E2EE] Received encrypted file chunk before key agreement complete');
+              console.warn('[Quark E2EE] Received encrypted file chunk before key agreement complete');
               return;
             }
             try {
@@ -345,19 +359,19 @@ export class PulsarPeer {
               const reassembled = encodeBinaryFrame(transferId, chunkIndex, decryptedPayload);
               this.onBinaryMessage?.(reassembled);
             } catch (err) {
-              console.error('[Pulsar E2EE] Failed to decrypt file chunk frame:', err);
+              console.error('[Quark E2EE] Failed to decrypt file chunk frame:', err);
               this.e2eeDecryptionFailures++;
               
               // Abort/Cancel this transfer
               try {
                 const { transferId } = decodeEncryptedFileFrame(rawData);
-                window.dispatchEvent(new CustomEvent('pulsar-cancel-transfer', {
+                window.dispatchEvent(new CustomEvent('quark-cancel-transfer', {
                   detail: { fileId: transferId }
                 }));
               } catch {}
             }
           } else {
-            console.warn(`[Pulsar E2EE] Unsupported frame type: ${frameType}`);
+            console.warn(`[Quark E2EE] Unsupported frame type: ${frameType}`);
           }
         }
       } catch (err) {
@@ -374,14 +388,17 @@ export class PulsarPeer {
       this.remotePublicKeyJwk = remoteJwk;
       
       const remotePublicKey = await importPublicKey(remoteJwk);
-      const roomId = useChatStore.getState().roomId;
-      
+      const storeState = useChatStore.getState();
+      const roomId = storeState.room?.roomId || '';
+      const roomPassword = storeState.room?.roomPassword;
+
       this.aesKey = await deriveAESGCMKey(
         this.ecdhKeyPair.privateKey,
         remotePublicKey,
         this.myId,
         this.peerId,
-        roomId
+        roomId,
+        roomPassword
       );
 
       // Derive Safety Number
@@ -406,7 +423,7 @@ export class PulsarPeer {
 
       this.onDataChannelOpen?.(); // Notify that channel is open and encrypted!
     } catch (err) {
-      console.error('[Pulsar E2EE] Key agreement derivation failure:', err);
+      console.error('[Quark E2EE] Key agreement derivation failure:', err);
       this.e2eeStatus = 'failed';
       useChatStore.getState().updatePeer(this.peerId, {
         e2eeStatus: 'failed'
@@ -419,7 +436,9 @@ export class PulsarPeer {
       console.warn('Data channel is not open, cannot send plaintext message');
       return;
     }
-    const raw = JSON.stringify(msg);
+    const seq = this.sendSeq++;
+    const enriched = { ...msg, protocolVersion: PROTOCOL_VERSION, seq } as DataChannelMessage;
+    const raw = JSON.stringify(enriched);
     this.dataChannel.send(raw);
     this.messageCount++;
     this.bytesSentAccumulator += raw.length;
@@ -430,7 +449,9 @@ export class PulsarPeer {
       return;
     }
     try {
-      const rawPlaintext = JSON.stringify(msg);
+      const seq = this.sendSeq++;
+      const enriched = { ...msg, protocolVersion: PROTOCOL_VERSION, seq } as DataChannelMessage;
+      const rawPlaintext = JSON.stringify(enriched);
       const { iv, ciphertext } = await encryptMessage(this.aesKey, rawPlaintext);
       const frame = encodeEncryptedControlFrame(iv, ciphertext);
       
@@ -439,7 +460,7 @@ export class PulsarPeer {
       this.e2eeMessagesEncrypted++;
       this.bytesSentAccumulator += frame.byteLength;
     } catch (err) {
-      console.error('[Pulsar E2EE] Error encrypting control message:', err);
+      console.error('[Quark E2EE] Error encrypting control message:', err);
       throw err;
     }
   }
@@ -459,14 +480,14 @@ export class PulsarPeer {
    * Handles incoming SDP Offer and returns Answer description.
    */
   async handleOffer(sdp: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
-    console.log(`[Pulsar WebRTC] Handling incoming offer from peer ${this.peerId}. State: ${this.peerConnection.signalingState}`);
+    console.log(`[Quark WebRTC] Handling incoming offer from peer ${this.peerId}. State: ${this.peerConnection.signalingState}`);
     this.onIceLog(`[SDP] Handling incoming offer...`);
     if (this.iceRestartTimer) {
       clearTimeout(this.iceRestartTimer);
       this.iceRestartTimer = null;
     }
     if (this.peerConnection.signalingState !== 'stable' && this.peerConnection.signalingState !== 'have-local-offer') {
-      console.warn(`[Pulsar WebRTC] Ignoring offer because signaling state is: ${this.peerConnection.signalingState}`);
+      console.warn(`[Quark WebRTC] Ignoring offer because signaling state is: ${this.peerConnection.signalingState}`);
       return this.peerConnection.localDescription || { type: 'answer', sdp: '' };
     }
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
@@ -485,10 +506,10 @@ export class PulsarPeer {
    * Handles incoming SDP Answer.
    */
   async handleAnswer(sdp: RTCSessionDescriptionInit): Promise<void> {
-    console.log(`[Pulsar WebRTC] Handling incoming answer from peer ${this.peerId}. State: ${this.peerConnection.signalingState}`);
+    console.log(`[Quark WebRTC] Handling incoming answer from peer ${this.peerId}. State: ${this.peerConnection.signalingState}`);
     this.onIceLog(`[SDP] Handling incoming answer...`);
     if (this.peerConnection.signalingState !== 'have-local-offer') {
-      console.warn(`[Pulsar WebRTC] Ignoring answer because signaling state is not 'have-local-offer'. State: ${this.peerConnection.signalingState}`);
+      console.warn(`[Quark WebRTC] Ignoring answer because signaling state is not 'have-local-offer'. State: ${this.peerConnection.signalingState}`);
       this.onIceLog(`[SDP Warning] Answer ignored (state: ${this.peerConnection.signalingState})`);
       return;
     }
@@ -535,6 +556,27 @@ export class PulsarPeer {
     }
   }
 
+  private trackReceivedMessage(msg: DataChannelMessage): boolean {
+    if (msg.seq !== undefined) {
+      if (msg.seq <= this.lastRecvSeq) {
+        console.warn(`[Quark E2EE] Replay attack detected: seq ${msg.seq} <= last ${this.lastRecvSeq} from ${this.peerId}`);
+        this.onIceLog(`[Replay] Dropping replayed message seq=${msg.seq}`);
+        return false;
+      }
+      this.lastRecvSeq = msg.seq;
+    }
+
+    if (msg.protocolVersion !== undefined) {
+      this.remoteProtocolVersion = msg.protocolVersion;
+      if (msg.protocolVersion !== PROTOCOL_VERSION) {
+        console.warn(`[Quark E2EE] Protocol version mismatch: remote=${msg.protocolVersion}, local=${PROTOCOL_VERSION} from ${this.peerId}`);
+        this.onIceLog(`[Downgrade] Remote version ${msg.protocolVersion}, local ${PROTOCOL_VERSION}`);
+      }
+    }
+
+    return true;
+  }
+
   /**
    * Send JSON text payload over data channel
    */
@@ -546,7 +588,7 @@ export class PulsarPeer {
 
     if (this.e2eeStatus === 'established' && this.aesKey) {
       this.sendMessageEncrypted(msg).catch((err) => {
-        console.error('[Pulsar E2EE] Encryption failed for outbound message:', err);
+        console.error('[Quark E2EE] Encryption failed for outbound message:', err);
       });
     } else {
       if (msg.type !== 'typing') {
@@ -664,6 +706,8 @@ export class PulsarPeer {
       e2eeMessagesEncrypted: this.e2eeMessagesEncrypted,
       e2eeMessagesDecrypted: this.e2eeMessagesDecrypted,
       e2eeDecryptionFailures: this.e2eeDecryptionFailures,
+      protocolVersion: PROTOCOL_VERSION,
+      remoteProtocolVersion: this.remoteProtocolVersion,
     };
   }
 
@@ -695,8 +739,11 @@ export class PulsarPeer {
   }
 }
 
-export class PulsarRoom {
-  peers: Map<string, PulsarPeer> = new Map();
+// PROTOCOL CONSTANT — Changing the DataChannel label ('quark-data') breaks compatibility
+// with clients using the old protocol. Coordinate updates across all deployed clients.
+
+export class QuarkRoom {
+  peers: Map<string, QuarkPeer> = new Map();
   private pendingCandidates: Map<string, RTCIceCandidateInit[]> = new Map();
   private myId: string;
   private onSignal: (msg: SignalingMessage) => void;
@@ -724,12 +771,12 @@ export class PulsarRoom {
   /**
    * Connects a new peer, starting initiator offers if requested.
    */
-  async addPeer(peerId: string, isInitiator: boolean): Promise<PulsarPeer> {
+  async addPeer(peerId: string, isInitiator: boolean): Promise<QuarkPeer> {
     if (this.peers.has(peerId)) {
       this.peers.get(peerId)!.close();
     }
 
-    const peer = new PulsarPeer({
+    const peer = new QuarkPeer({
       peerId,
       myId: this.myId,
       isInitiator,

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Space_Mono, JetBrains_Mono } from 'next/font/google';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import "./globals.css";
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GlobalListener } from '../components/GlobalListener';
@@ -7,32 +7,44 @@ import { ToastContainer } from '../components/ui/ToastContainer';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { PWAInstallPrompt } from '../components/PWAInstallPrompt';
 
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  weight: ['400', '500', '600', '700'],
-});
-
-const spaceMono = Space_Mono({
-  subsets: ['latin'],
-  variable: '--font-space-mono',
-  weight: ['400', '700'],
-});
-
+// Display / Wordmark / Headings: JetBrains Mono
+// Stronger geometric character than Space Mono, supports tabular numerals and stylistic sets.
+// Use for wordmark, headings, timestamps, peer IDs, room codes, technical data.
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
-  variable: '--font-jetbrains-mono',
-  weight: ['400', '700'],
+  variable: '--font-mono',
+  weight: ['400', '500', '700'],
+  display: 'swap',
+});
+
+// Body / UI Text: Inter
+// Industry standard for interface text, excellent legibility at small sizes.
+// Use for message text, buttons, form labels, tooltips, help text.
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-sans',
+  weight: ['400', '500', '600'],
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
-  title: "Pulsar — Direct P2P Chat",
-  description: "Signal travels. No server needed. A serverless peer-to-peer real-time chat Progressive Web App.",
+  title: "Quark — Chat without the middle",
+  description: "Peer-to-peer chat and file sharing. End-to-end encrypted. No servers, no accounts, no trace. Works online, offline, and on any local network.",
   manifest: "/manifest.json",
+  applicationName: "Quark",
+  openGraph: {
+    title: "Quark — Chat without the middle",
+    description: "Peer-to-peer chat. Nothing in between.",
+    type: "website",
+  },
+  twitter: {
+    title: "Quark",
+    description: "Peer-to-peer chat. Nothing in between.",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Pulsar",
+    title: "Quark",
   },
 };
 
@@ -52,7 +64,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${inter.variable} ${spaceMono.variable} ${jetbrainsMono.variable} antialiased bg-bg-primary text-text-primary`}
+        className={`${inter.variable} ${jetbrainsMono.variable} antialiased bg-bg-base text-fg-primary`}
       >
         <ErrorBoundary>
           <OfflineBanner />

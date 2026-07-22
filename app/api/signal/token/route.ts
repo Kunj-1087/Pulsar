@@ -4,6 +4,15 @@ import Ably from 'ably';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
+  // In offline mode, this endpoint should not be called at all.
+  // Return 503 Service Unavailable to signal it's disabled.
+  if (process.env.OFFLINE_MODE === 'true') {
+    return NextResponse.json(
+      { error: 'Ably token generation is disabled in offline mode.' },
+      { status: 503 }
+    );
+  }
+
   const apiKey = process.env.ABLY_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

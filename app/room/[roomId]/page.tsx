@@ -16,7 +16,7 @@ interface RoomPageProps {
 export async function generateMetadata({ params }: RoomPageProps): Promise<Metadata> {
   const cleanRoomId = params.roomId.toUpperCase();
   return {
-    title: `Pulsar · Room ${cleanRoomId}`,
+    title: `Quark · Room ${cleanRoomId}`,
   };
 }
 

@@ -25,8 +25,8 @@ if (typeof global !== 'undefined') {
   if (!g.__createRoomCleanupRegistered) {
     setInterval(() => {
       const now = Date.now();
-      for (const [ip, times] of ipRequests.entries()) {
-        const validTimes = times.filter((t) => now - t < WINDOW_MS);
+      for (const [ip, times] of Array.from(ipRequests.entries())) {
+        const validTimes = times.filter((t: number) => now - t < WINDOW_MS);
         if (validTimes.length === 0) {
           ipRequests.delete(ip);
         } else {
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     const clientIp = forwarded ? forwarded.split(',')[0].trim() : 'unknown';
 
     if (isRateLimited(clientIp)) {
-      console.warn(`[Pulsar API] Room creation rate limited for IP: ${clientIp}`);
+      console.warn(`[Quark API] Room creation rate limited for IP: ${clientIp}`);
       return NextResponse.json({ error: 'Too Many Requests' }, { status: 429 });
     }
 

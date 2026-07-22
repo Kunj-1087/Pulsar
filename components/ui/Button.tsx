@@ -17,12 +17,12 @@ export const Button: React.FC<ButtonProps> = ({
   disabled,
   ...props
 }) => {
-  const baseStyle = 'inline-flex items-center justify-center font-mono font-medium rounded transition-all duration-150 active:scale-[0.98] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100';
+  const baseStyle = 'inline-flex items-center justify-center font-mono font-medium rounded transition-all duration-150 active:scale-[0.98] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 tracking-wide';
   
   const variants = {
-    primary: 'bg-text-primary text-bg-primary hover:bg-text-bright border border-transparent',
-    ghost: 'bg-transparent border border-border-default text-text-primary hover:bg-bg-surface',
-    danger: 'bg-status-red text-bg-primary hover:opacity-90 border border-transparent',
+    primary: 'bg-fg-primary text-bg-base hover:bg-fg-secondary border border-transparent',
+    ghost: 'bg-transparent border border-border text-fg-primary hover:bg-bg-hover',
+    danger: 'bg-decay text-bg-base hover:bg-decay-hover border border-transparent',
   };
 
   const sizes = {

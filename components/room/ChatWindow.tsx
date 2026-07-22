@@ -4,9 +4,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { generateId, cn } from '../../lib/utils';
 import { useChatStore } from '../../store/chatStore';
 import { FallbackSignalingDriver, SignalingDriver } from '../../lib/signaling';
-import { PulsarRoom } from '../../lib/webrtc';
+import { QuarkRoom } from '../../lib/webrtc';
 import { FileReceiver, decodeBinaryFrame } from '../../lib/fileTransfer';
-import { getMessages, saveMessage, saveFile, saveRoom } from '../../lib/storage';
+import { getMessages, saveMessage, saveFile, saveRoom, cleanupExpiredMessages } from '../../lib/storage';
 import { Message, SignalingMessage, DataChannelMessage } from '../../types';
 import { RoomHeader } from './RoomHeader';
 import { PeerStatus } from './PeerStatus';
@@ -61,7 +61,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
   // Refs for WebRTC instance mappings
   const signalingRef = useRef<SignalingDriver | null>(null);
-  const roomRef = useRef<PulsarRoom | null>(null);
+  const roomRef = useRef<QuarkRoom | null>(null);
   const fileReceiversRef = useRef<Map<string, FileReceiver>>(new Map());
   const statsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const disconnectTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -69,6 +69,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const INCOMING_TYPING_TIMEOUT_MS = 5000;
 
   const cancelledTransfersRef = useRef<Set<string>>(new Set());
+  const [ephemeral] = useState(false);
 
   // Handle Ctrl+Shift+D / Cmd+Shift+D keyboard shortcuts for Dev Panel
   useEffect(() => {
@@ -132,7 +133,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       // 1. Resolve Display Name and Identity
       let myName = '';
       if (typeof window !== 'undefined') {
-        const saved = localStorage.getItem('pulsar_identity');
+        const saved = localStorage.getItem('quark_identity');
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
@@ -170,7 +171,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         id: generateId(),
         roomId,
         type: 'system',
-        text: 'Direct encrypted channel initialized. Waiting for peers...',
+        text: '> peer node initialized',
         sender: 'System',
         senderId: 'system',
         ts: Date.now(),
@@ -181,7 +182,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       }
 
       // 3. Setup WebRTC Room Mesh Manager
-      const room = new PulsarRoom({
+      const room = new QuarkRoom({
         myId: myPeerId,
         onSignal: (signal) => {
           signalingRef.current?.send(signal);
@@ -221,14 +222,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
             if (oldPeer?.connectionState !== 'connected') {
               const name = oldPeer?.handle ? `@${oldPeer.handle}` : (oldPeer?.displayName || peerId.substring(0, 8));
-              toast.success(`Peer joined the room: ${name}`, { title: 'Peer Connected' });
+              toast.success(`${name} joined. E2EE established.`);
 
               // Send our peer info immediately
               if (displayName) {
                 let myHandle = '';
                 let myColor = '';
                 try {
-                  const saved = localStorage.getItem('pulsar_identity');
+                  const saved = localStorage.getItem('quark_identity');
                   if (saved) {
                     const parsed = JSON.parse(saved);
                     myHandle = parsed.handle;
@@ -254,13 +255,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
                   const name = currentPeer.handle ? `@${currentPeer.handle}` : (currentPeer.displayName || peerId.substring(0, 8));
                   
                    cleanupPeerResources(peerId);
-                  toast.info(`Peer left the room: ${name}`, { title: 'Peer Disconnected' });
+                   toast.info(`${name} left.`);
 
                   store.addMessage({
                     id: generateId(),
                     roomId,
                     type: 'system',
-                    text: `${name} left the room.`,
+                    text: `> peer left: ${name}`,
                     sender: 'System',
                     senderId: 'system',
                     ts: Date.now(),
@@ -275,13 +276,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             const peerName = oldPeer?.displayName || peerId.substring(0, 8);
             
             cleanupPeerResources(peerId);
-            toast.warning(`Connection to peer ${peerName} failed.`, { title: 'Connection Failure' });
+            toast.warning(`Connection to ${peerName} failed.`);
 
             store.addMessage({
               id: generateId(),
               roomId,
               type: 'system',
-              text: `Connection to ${peerName} failed.`,
+              text: `> connection failed: ${peerName}`,
               sender: 'System',
               senderId: 'system',
               ts: Date.now(),
@@ -313,16 +314,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           } else {
             store.setRoomStatus('connecting');
           }
-          store.appendIceLog('[Signaling] Connected to signaling channel.');
+          store.appendIceLog('// [Signaling] Connected to signaling channel.');
           
           if (store.roomStatus === 'reconnecting') {
-            toast.success('Signaling connection restored.', { title: 'Network Restored' });
+            toast.success('Signaling connection restored.');
           }
         } else if (state === 'reconnecting') {
           store.setRoomStatus('reconnecting');
-          store.appendIceLog('[Signaling Error] Lost connection to signaling. Reconnecting...');
-          
-          failAllFileTransfers();
+            store.appendIceLog('// [Signaling Error] Lost connection to signaling. Reconnecting...');
+            
+            failAllFileTransfers();
           
           typingTimersRef.current.forEach((t) => clearTimeout(t));
           typingTimersRef.current.clear();
@@ -334,14 +335,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             store.removePeer(peerId);
           });
           
-          toast.warning('Signaling connection lost. Reconnecting...', { title: 'Network Interrupted' });
+          toast.warning('Signaling connection lost. Reconnecting...');
         } else if (state === 'disconnected') {
           if (store.roomStatus !== 'closed' && store.roomStatus !== 'closing') {
-            store.setRoomStatus('disconnected');
+            store.setRoomStatus('reconnecting');
           }
         } else if (state === 'failed') {
           store.setRoomStatus('failed');
-          toast.error('Unable to connect to signaling systems. Please check your network.', { title: 'Signaling Offline' });
+          toast.error('Signaling offline. Check your network.');
         }
       });
 
@@ -355,15 +356,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         store.setSignalingDriverName(signaling.getActiveDriverName());
       } catch (err) {
         console.error('Signaling connection failure:', err);
-        store.appendIceLog('[Signaling Error] Failed to connect signaling server.');
+        store.appendIceLog('// [Signaling] Failed to connect signaling server.');
         if (active) {
           store.setRoomStatus('failed');
-          toast.error('Unable to connect to signaling. Both WebSocket and Ably backup systems are offline.', { title: 'Signaling Failure' });
+          toast.error('Unable to connect to signaling.');
           store.addMessage({
             id: generateId(),
             roomId,
             type: 'system',
-            text: 'Signaling failed. WebSocket and Ably fallback systems are unreachable.',
+              text: '> signaling failed. unable to reach server.',
             sender: 'System',
             senderId: 'system',
             ts: Date.now(),
@@ -387,6 +388,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       }
     }, 2000);
 
+    const cleanupInterval = setInterval(() => {
+      cleanupExpiredMessages();
+    }, 30000);
+
     const currentDisconnectTimers = disconnectTimersRef.current;
     const currentTypingTimers = typingTimersRef.current;
     const currentReceiversMap = fileReceiversRef.current;
@@ -395,6 +400,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     return () => {
       active = false;
       if (statsIntervalRef.current) clearInterval(statsIntervalRef.current);
+      clearInterval(cleanupInterval);
       
       // Cancel all active transfers
       const currentReceivers = Array.from(currentReceiversMap.keys());
@@ -423,7 +429,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
     switch (msg.type) {
       case 'room-joined':
-        store.appendIceLog(`[Signaling] Joined room. Existing peers: ${msg.existingPeers?.join(', ') || 'None'}`);
+        store.appendIceLog(`// [Signaling] Joined room. Existing peers: ${msg.existingPeers?.join(', ') || 'None'}`);
         if (msg.existingPeers) {
           store.setRoomStatus('connecting');
           for (const peerId of msg.existingPeers) {
@@ -446,7 +452,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         break;
 
       case 'peer-joined':
-        store.appendIceLog(`[Signaling] Peer ${msg.peerId} entered signaling channel.`);
+        store.appendIceLog(`// [Signaling] Peer ${msg.peerId} entered signaling channel.`);
         store.setRoomStatus('connecting');
         
         const isInitiator = myPeerId < msg.peerId;
@@ -465,7 +471,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
       case 'offer':
         if (msg.toPeer === myPeerId) {
-          store.appendIceLog(`[Signaling] Received WebRTC offer from ${msg.fromPeer}.`);
+          store.appendIceLog(`// [Signaling] Received WebRTC offer from ${msg.fromPeer}.`);
           store.setRemoteSdp(msg.sdp.sdp || '');
 
           let rxPeer = room.peers.get(msg.fromPeer);
@@ -493,7 +499,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
       case 'answer':
         if (msg.toPeer === myPeerId) {
-          store.appendIceLog(`[Signaling] Received WebRTC answer from ${msg.fromPeer}.`);
+          store.appendIceLog(`// [Signaling] Received WebRTC answer from ${msg.fromPeer}.`);
           store.setRemoteSdp(msg.sdp.sdp || '');
           const txPeer = room.peers.get(msg.fromPeer);
           if (txPeer) {
@@ -509,21 +515,21 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         break;
 
       case 'peer-left':
-        store.appendIceLog(`[Signaling] Peer ${msg.peerId} disconnected.`);
+        store.appendIceLog(`// [Signaling] Peer ${msg.peerId} disconnected.`);
         
         const peerObj = store.peers.get(msg.peerId);
         const name = peerObj?.displayName || msg.peerId.substring(0, 8);
 
         cleanupPeerResources(msg.peerId);
 
-        addToast(`Peer left the room: ${name}`);
+        toast.info(`Peer left the room: ${name}`);
         
         // System message logging
         store.addMessage({
           id: generateId(),
           roomId,
           type: 'system',
-          text: `${name} left the room.`,
+          text: `> peer left: ${name}`,
           sender: 'System',
           senderId: 'system',
           ts: Date.now(),
@@ -537,13 +543,13 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             id: generateId(),
             roomId,
             type: 'system',
-            text: 'Room is full (max 6 peers). You could not join.',
+            text: '> room is full. max 6 peers.',
             sender: 'System',
             senderId: 'system',
             ts: Date.now(),
             isOwn: false,
           });
-          addToast('Room is full');
+          toast.error('This room is full.');
           signalingRef.current?.disconnect();
         }
         break;
@@ -565,7 +571,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           id: generateId(),
           roomId,
           type: 'system',
-          text: `${peerName} joined the room.`,
+          text: `> peer joined: ${peerName}`,
           sender: 'System',
           senderId: 'system',
           ts: Date.now(),
@@ -574,6 +580,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         break;
 
       case 'message':
+        const deleteAt = msg.disappearAfterMs ? Date.now() + msg.disappearAfterMs : undefined;
         const newTextMsg: Message = {
           id: msg.id,
           roomId,
@@ -583,9 +590,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           senderId: msg.senderId,
           ts: msg.ts,
           isOwn: false,
+          deleteAt,
         };
         store.addMessage(newTextMsg);
-        await saveMessage(newTextMsg);
+        if (!ephemeral) {
+          await saveMessage(newTextMsg);
+        }
         break;
 
       case 'file-meta':
@@ -696,15 +706,15 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         receiver.receiveChunk(chunkIndex, chunkData);
         store.updateFileProgress(transferId, receiver.getProgress());
       } else {
-        console.warn(`[Pulsar ChatWindow] Received binary chunk for unknown transfer: ${transferId}`);
+        console.warn(`[Quark ChatWindow] Received binary chunk for unknown transfer: ${transferId}`);
       }
     } catch (err) {
-      console.error('[Pulsar ChatWindow] Failed to handle incoming binary message:', err);
+      console.error('[Quark ChatWindow] Failed to handle incoming binary message:', err);
     }
   };
 
   const handleCancelTransfer = async (fileId: string) => {
-    console.log(`[Pulsar ChatWindow] Cancelling transfer: ${fileId}`);
+    console.log(`[Quark ChatWindow] Cancelling transfer: ${fileId}`);
     cancelledTransfersRef.current.add(fileId);
     fileReceiversRef.current.delete(fileId);
     
@@ -733,16 +743,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       const { fileId } = (e as CustomEvent).detail;
       handleCancelTransfer(fileId);
     };
-    window.addEventListener('pulsar-cancel-transfer', handleCancelEvent);
+    window.addEventListener('quark-cancel-transfer', handleCancelEvent);
     return () => {
-      window.removeEventListener('pulsar-cancel-transfer', handleCancelEvent);
+      window.removeEventListener('quark-cancel-transfer', handleCancelEvent);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Action dispatcher: Text Messages
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, disappearAfterMs?: number) => {
     const textId = generateId();
+    const deleteAt = disappearAfterMs ? Date.now() + disappearAfterMs : undefined;
     const newMsg: Message = {
       id: textId,
       roomId,
@@ -752,13 +762,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       senderId: myPeerId,
       ts: Date.now(),
       isOwn: true,
+      deleteAt,
     };
 
-    // Update locally
     store.addMessage(newMsg);
-    await saveMessage(newMsg);
+    if (!ephemeral) {
+      await saveMessage(newMsg);
+    }
 
-    // Broadcast to peers
     const wireMsg: DataChannelMessage = {
       type: 'message',
       id: textId,
@@ -766,6 +777,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       sender: displayName,
       senderId: myPeerId,
       ts: Date.now(),
+      disappearAfterMs,
     };
     roomRef.current?.broadcast(wireMsg);
   };
@@ -871,7 +883,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
       let myHandle = '';
       let myColor = '';
       try {
-        const saved = localStorage.getItem('pulsar_identity');
+        const saved = localStorage.getItem('quark_identity');
         if (saved) {
           const parsed = JSON.parse(saved);
           myHandle = parsed.handle;
@@ -910,7 +922,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   );
 
   return (
-    <div className="flex w-screen h-screen overflow-hidden bg-bg-primary">
+    <div className="flex w-screen h-screen overflow-hidden bg-bg-base">
       {/* Main chat interface */}
       <div
         className={cn(
@@ -922,16 +934,16 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         <PeerStatus />
 
         {allPeersFailedICE && (
-          <div className="bg-status-red/10 border-b border-status-red/30 px-4 py-2 flex items-center justify-between text-xs font-mono text-status-red select-none">
-            <span className="font-bold">ALL P2P CHANNELS FAILED. YOUR NETWORK MAY REQUIRE A TURN RELAY.</span>
+          <div className="bg-decay/10 border-b border-decay/30 px-4 py-2 flex items-center justify-between text-xs font-mono text-decay select-none">
+            <span className="type-uppercase-label">All P2P channels failed. Network may require a TURN relay.</span>
           </div>
         )}
         
         <MessageList messages={store.messages} roomId={roomId} />
 
         {store.roomStatus === 'failed' ? (
-          <div className="border-t border-border-default bg-[#1a1a1a] px-4 py-4 flex flex-col items-center justify-center gap-3 select-none">
-            <p className="font-mono text-xs text-status-red flex items-center gap-1.5 font-bold uppercase tracking-wider">
+          <div className="border-t border-border bg-bg-elevated px-4 py-4 flex flex-col items-center justify-center gap-3 select-none">
+            <p className="type-uppercase-label text-decay">
               <span>Signaling offline. Connection could not be established.</span>
             </p>
             <Button
@@ -948,7 +960,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
               }}
               className="text-xs h-8 px-4"
             >
-              Retry Connection
+              Retry connection
             </Button>
           </div>
         ) : (
@@ -967,34 +979,34 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
       {/* Keyboard Shortcuts Modal */}
       {showShortcutsModal && (
-        <div className="fixed inset-0 z-50 bg-[#121212]/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-[340px] bg-bg-surface border border-border-default rounded-md p-5 relative select-none font-mono">
+        <div className="fixed inset-0 z-50 bg-bg-base/80 flex items-center justify-center p-4">
+          <div className="w-full max-w-[340px] bg-bg-surface border border-border rounded-md p-5 relative select-none font-mono">
             <button
               onClick={() => setShowShortcutsModal(false)}
-              className="absolute top-4 right-4 text-text-muted hover:text-text-bright transition-colors focus:outline-none"
+              className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
               aria-label="Close shortcuts modal"
             >
               <X className="w-4 h-4" />
             </button>
-            <h3 className="text-xs uppercase tracking-wider text-text-muted mb-4 font-bold">
+            <h3 className="type-uppercase-label text-fg-muted mb-4">
               Keyboard Shortcuts
             </h3>
-            <div className="space-y-2.5 text-xs text-text-primary">
-              <div className="flex justify-between border-b border-border-default/40 pb-1.5">
+            <div className="space-y-2.5 text-caption text-fg-primary">
+              <div className="flex justify-between border-b border-border/40 pb-1.5">
                 <span>Focus Input</span>
-                <span className="text-[#e6e8e6] bg-[#2d2d2d] px-1.5 rounded-sm">Ctrl + K</span>
+                <span className="text-fg-primary bg-bg-active px-1.5 rounded-sm">Ctrl + K</span>
               </div>
-              <div className="flex justify-between border-b border-border-default/40 pb-1.5">
+              <div className="flex justify-between border-b border-border/40 pb-1.5">
                 <span>Dev Panel</span>
-                <span className="text-[#e6e8e6] bg-[#2d2d2d] px-1.5 rounded-sm">Ctrl + Shift + D</span>
+                <span className="text-fg-primary bg-bg-active px-1.5 rounded-sm">Ctrl + Shift + D</span>
               </div>
-              <div className="flex justify-between border-b border-border-default/40 pb-1.5">
+              <div className="flex justify-between border-b border-border/40 pb-1.5">
                 <span>Show Shortcuts</span>
-                <span className="text-[#e6e8e6] bg-[#2d2d2d] px-1.5 rounded-sm">Ctrl + /</span>
+                <span className="text-fg-primary bg-bg-active px-1.5 rounded-sm">Ctrl + /</span>
               </div>
               <div className="flex justify-between">
                 <span>Dismiss modal</span>
-                <span className="text-[#e6e8e6] bg-[#2d2d2d] px-1.5 rounded-sm">ESC</span>
+                <span className="text-fg-primary bg-bg-active px-1.5 rounded-sm">ESC</span>
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-# PULSAR — Product Requirements Document
+# QUARK — Product Requirements Document
 
 > **"Signal travels. No server needed."**
 
@@ -7,7 +7,7 @@
 | Field | Value |
 |---|---|
 | Document Version | v1.0 |
-| Project Name | Pulsar |
+| Project Name | Quark |
 | Document Type | Product Requirements Document (PRD) |
 | Status | Draft — In Review |
 | Author | Kunj Nakrani (CTO / Founder) |
@@ -44,7 +44,7 @@
 
 ## 1. Executive Summary
 
-Pulsar is a free, open-source, serverless peer-to-peer (P2P) real-time chat application that enables two or more devices to communicate directly over a local network (LAN) or the internet without requiring a central message server. Powered by WebRTC DataChannels, Pulsar eliminates hosting costs, preserves user privacy, and operates fully offline when devices share the same Wi-Fi network.
+Quark is a free, open-source, serverless peer-to-peer (P2P) real-time chat application that enables two or more devices to communicate directly over a local network (LAN) or the internet without requiring a central message server. Powered by WebRTC DataChannels, Quark eliminates hosting costs, preserves user privacy, and operates fully offline when devices share the same Wi-Fi network.
 
 The application is a Progressive Web App (PWA) built on Next.js, deployable to Vercel in one click. It is designed as a portfolio-grade open-source project that demonstrates advanced full-stack and P2P networking competence.
 
@@ -71,9 +71,9 @@ Modern chat tools (WhatsApp, Telegram, Slack) require internet connectivity, cen
 | Telegram | Yes | No | Partial | Yes | Partial |
 | Slack | Yes | No | No | Yes | No |
 | LocalSend | No | Yes | Yes | Yes | Yes |
-| **Pulsar (this)** | **No (LAN)** | **Yes** | **Yes** | **Yes** | **Yes** |
+| **Quark (this)** | **No (LAN)** | **Yes** | **Yes** | **Yes** | **Yes** |
 
-Pulsar fills the gap: a browser-based, login-free, offline-capable, self-hostable chat and file sharing tool that works on any device with a browser.
+Quark fills the gap: a browser-based, login-free, offline-capable, self-hostable chat and file sharing tool that works on any device with a browser.
 
 ---
 
@@ -118,7 +118,7 @@ Pulsar fills the gap: a browser-based, login-free, offline-capable, self-hostabl
 ### 4.2 Secondary Users (V2 SaaS)
 
 - Small businesses wanting a private internal chat without Slack costs
-- Developers wanting a hosted Pulsar instance without self-hosting
+- Developers wanting a hosted Quark instance without self-hosting
 
 ### 4.3 Portfolio Audience
 
@@ -130,20 +130,20 @@ Pulsar fills the gap: a browser-based, login-free, offline-capable, self-hostabl
 
 ## 5. Core Concepts & Technology
 
-### 5.1 WebRTC — How It Works in Pulsar
+### 5.1 WebRTC — How It Works in Quark
 
-WebRTC (Web Real-Time Communication) is a browser API that enables direct peer-to-peer data, audio, and video communication between browsers without a media server. Pulsar uses two WebRTC APIs:
+WebRTC (Web Real-Time Communication) is a browser API that enables direct peer-to-peer data, audio, and video communication between browsers without a media server. Quark uses two WebRTC APIs:
 
 - **RTCPeerConnection** — Establishes the P2P connection between two browsers
 - **RTCDataChannel** — Sends arbitrary binary/text data (messages, files) directly between peers
 
 ### 5.2 The Signaling Problem
 
-WebRTC peers cannot find each other without an initial handshake. This is called signaling. Pulsar uses a minimal signaling server (Vercel Serverless Function + ephemeral WebSocket relay) to exchange SDP Offers/Answers and ICE Candidates. Once connected, the signaling server plays no further role — all data flows P2P.
+WebRTC peers cannot find each other without an initial handshake. This is called signaling. Quark uses a minimal signaling server (Vercel Serverless Function + ephemeral WebSocket relay) to exchange SDP Offers/Answers and ICE Candidates. Once connected, the signaling server plays no further role — all data flows P2P.
 
 ### 5.3 ICE, STUN, TURN
 
-| Component | Role | Pulsar Usage |
+| Component | Role | Quark Usage |
 |---|---|---|
 | STUN Server | Discovers public IP of peers | Free Google STUN (stun.l.google.com:19302) |
 | TURN Server | Relay if direct connection fails | Not in V1 — added in V2 for cross-network |
@@ -151,11 +151,11 @@ WebRTC peers cannot find each other without an initial handshake. This is called
 
 ### 5.4 Offline / LAN Mode
 
-When both devices are on the same Wi-Fi network, WebRTC establishes a direct local connection without traversing the internet. The signaling server is still needed initially but the actual chat data never leaves the local network. This is the core "offline" capability of Pulsar.
+When both devices are on the same Wi-Fi network, WebRTC establishes a direct local connection without traversing the internet. The signaling server is still needed initially but the actual chat data never leaves the local network. This is the core "offline" capability of Quark.
 
 ### 5.5 PWA (Progressive Web App)
 
-Pulsar is built as a PWA, meaning it can be installed from the browser on both mobile (iOS/Android) and desktop (Windows/Mac/Linux) without going through an app store. It supports offline caching of the app shell via Service Workers, and local message persistence via IndexedDB.
+Quark is built as a PWA, meaning it can be installed from the browser on both mobile (iOS/Android) and desktop (Windows/Mac/Linux) without going through an app store. It supports offline caching of the app shell via Service Workers, and local message persistence via IndexedDB.
 
 ---
 
@@ -163,7 +163,7 @@ Pulsar is built as a PWA, meaning it can be installed from the browser on both m
 
 ### 6.1 Create a Room (Host)
 
-1. User opens Pulsar in browser (or installed PWA)
+1. User opens Quark in browser (or installed PWA)
 2. User enters a display name (optional — defaults to "User + random ID")
 3. User clicks "Create Room"
 4. App generates a unique 6-character Room Code and a shareable URL
@@ -172,7 +172,7 @@ Pulsar is built as a PWA, meaning it can be installed from the browser on both m
 
 ### 6.2 Join a Room (Guest)
 
-1. User opens Pulsar and enters the Room Code, or opens the shared URL directly
+1. User opens Quark and enters the Room Code, or opens the shared URL directly
 2. Signaling server relays SDP offer/answer between Host and Guest
 3. WebRTC P2P connection is established (< 3 seconds on LAN)
 4. Chat interface opens. Both users see a "Connected" status indicator
@@ -250,7 +250,7 @@ Pulsar is built as a PWA, meaning it can be installed from the browser on both m
 | Feature | Description | Priority |
 |---|---|---|
 | Installable | Add to Home Screen on mobile / Install on desktop | P0 |
-| App Icon | Custom Pulsar icon for installed PWA | P0 |
+| App Icon | Custom Quark icon for installed PWA | P0 |
 | Offline App Shell | Service Worker caches UI shell for offline load | P1 |
 | Responsive Design | Full mobile + desktop layout support | P0 |
 
@@ -258,7 +258,7 @@ Pulsar is built as a PWA, meaning it can be installed from the browser on both m
 
 ## 8. Feature Specifications — V2 (SaaS)
 
-V2 transforms Pulsar from a pure P2P tool to a hosted SaaS product with optional cloud relay for cross-network reliability and premium features.
+V2 transforms Quark from a pure P2P tool to a hosted SaaS product with optional cloud relay for cross-network reliability and premium features.
 
 ### 8.1 V2 Feature Set
 
@@ -272,14 +272,14 @@ V2 transforms Pulsar from a pure P2P tool to a hosted SaaS product with optional
 | File Storage | Cloud file storage for 30-day retention |
 | Admin Dashboard | Usage analytics for hosted users |
 | Custom Domain | Self-hostable with custom domain support |
-| API Access | REST API for developers to integrate Pulsar into apps |
+| API Access | REST API for developers to integrate Quark into apps |
 
 ### 8.2 V2 Pricing Model
 
 | Plan | Price | Features |
 |---|---|---|
 | Free (Open Source) | Free forever | Self-host, P2P only, no persistence |
-| Hosted Free | Free | Use Pulsar hosted, 2 peers, LAN only |
+| Hosted Free | Free | Use Quark hosted, 2 peers, LAN only |
 | Pro | ₹199/month | 10 peers, TURN relay, file history, persistence |
 | Team | ₹999/month | Unlimited peers, admin, API, custom domain |
 
@@ -289,7 +289,7 @@ V2 transforms Pulsar from a pure P2P tool to a hosted SaaS product with optional
 
 ### 9.1 System Overview
 
-Pulsar follows a minimal server architecture. The only server-side component is a lightweight signaling layer. All message data flows P2P via WebRTC.
+Quark follows a minimal server architecture. The only server-side component is a lightweight signaling layer. All message data flows P2P via WebRTC.
 
 ### 9.2 Component Diagram
 
@@ -354,7 +354,7 @@ Files are transferred entirely via RTCDataChannel using a chunked binary protoco
 ### 10.1 Project Structure
 
 ```
-pulsar/
+quark/
 ├── app/
 │   ├── page.tsx                      # Landing / Home
 │   ├── room/[id]/page.tsx            # Chat Room
@@ -388,9 +388,9 @@ pulsar/
 
 | Element | Value |
 |---|---|
-| Name | Pulsar |
+| Name | Quark |
 | Tagline | "Signal travels. No server needed." |
-| Inspiration | Astrophysics — Pulsars emit rhythmic radio signals across space, mirroring P2P messaging |
+| Inspiration | Quantum physics — Quarks form fundamental particles, mirroring discrete peer-to-peer messaging |
 | Personality | Minimal, precise, developer-first, trustworthy |
 
 ### 11.2 Color Palette
@@ -486,7 +486,7 @@ pulsar/
 
 ## 14. Developer Mode
 
-Pulsar includes a built-in Developer Mode panel accessible via keyboard shortcut `Ctrl+Shift+D` (or `Cmd+Shift+D` on Mac).
+Quark includes a built-in Developer Mode panel accessible via keyboard shortcut `Ctrl+Shift+D` (or `Cmd+Shift+D` on Mac).
 
 ### 14.1 Developer Panel Features
 
@@ -515,7 +515,7 @@ NEXT_PUBLIC_DEV_MODE=false   # Set true to enable dev panel by default
 
 ### 15.1 GitHub Repository
 
-- Repo name: `pulsar-chat` or `use-pulsar`
+- Repo name: `quark-chat` or `use-quark`
 - License: MIT (most permissive, maximizes adoption)
 - README: Full setup guide, architecture diagram, one-click Vercel deploy button
 - `CONTRIBUTING.md`: Clear contribution guidelines for community PRs
@@ -555,7 +555,7 @@ NEXT_PUBLIC_DEV_MODE=false   # Set true to enable dev panel by default
 
 ### 16.3 Skills Demonstrated
 
-| Skill Area | What Pulsar Shows |
+| Skill Area | What Quark Shows |
 |---|---|
 | Networking | WebRTC, ICE, STUN, SDP, P2P protocols |
 | Frontend | Next.js App Router, Tailwind, PWA, Service Workers |
@@ -572,7 +572,7 @@ NEXT_PUBLIC_DEV_MODE=false   # Set true to enable dev panel by default
 |---|---|---|
 | V0.1 — Proof of Concept | Week 1–2 | WebRTC P2P connection, text messages, room codes |
 | V0.2 — File Transfer | Week 3–4 | Chunked file send/receive, progress bar, image preview |
-| V0.3 — PWA + Design | Week 5–6 | PWA manifest, Service Worker, Pulsar design system applied |
+| V0.3 — PWA + Design | Week 5–6 | PWA manifest, Service Worker, Quark design system applied |
 | V1.0 — Public Launch | Week 7–8 | QR codes, developer mode, README, Vercel deploy, GitHub public |
 | V1.1 — Polish | Week 9–10 | Typing indicators, reconnection, peer list, mobile UX fixes |
 | V2.0 — SaaS | Month 4–6 | TURN server, auth, persistence, Stripe, admin dashboard |
@@ -655,5 +655,5 @@ NEXT_PUBLIC_DEV_MODE=false   # Set true to enable dev panel by default
 
 > **How to use this PRD as context:**
 > If you hit token limits in a new chat session, upload this file and say:
-> *"This is the full PRD for Pulsar, a WebRTC P2P chat PWA. Use this as complete context and continue building."*
+> *"This is the full PRD for Quark, a WebRTC P2P chat PWA. Use this as complete context and continue building."*
 > Any model will have everything needed to pick up exactly where we left off.

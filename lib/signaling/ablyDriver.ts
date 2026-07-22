@@ -22,28 +22,29 @@ export class AblySignaling {
     if (this.client) return;
 
     this.setStatus('reconnecting');
-    console.log('[Pulsar Ably] Initializing Ably client connection...');
+    console.log('[Quark Ably] Initializing Ably client connection...');
 
     this.client = new Ably.Realtime({
-      authCallback: async (tokenParams: unknown, callback: (err: Error | string | null, tokenRequestOrToken: unknown) => void) => {
-        try {
-          const res = await fetch('/api/signal/token');
-          if (!res.ok) {
-            callback(new Error(`Failed to fetch Ably token: ${res.statusText}`), null);
-            return;
-          }
-          const tokenRequest = await res.json();
-          callback(null, tokenRequest);
-        } catch (err) {
-          callback(err as Error, null);
-        }
+      authCallback: (tokenParams: any, callback: any) => {
+        fetch('/api/signal/token')
+          .then(async (res) => {
+            if (!res.ok) {
+              callback(new Error(`Failed to fetch Ably token: ${res.statusText}`), null);
+              return;
+            }
+            const tokenRequest = await res.json();
+            callback(null, tokenRequest);
+          })
+          .catch((err) => {
+            callback(err, null);
+          });
       },
     });
 
     // Map connection states
     this.client.connection.on((stateChange) => {
       const current = stateChange.current;
-      console.log(`[Pulsar Ably] Connection state changed to: ${current}`);
+      console.log(`[Quark Ably] Connection state changed to: ${current}`);
       
       if (current === 'connected') {
         this.setStatus('connected');
@@ -85,17 +86,17 @@ export class AblySignaling {
   async joinRoom(roomId: string): Promise<void> {
     this.roomId = roomId;
     if (!this.client) {
-      throw new Error('[Pulsar Ably] Client not connected');
+      throw new Error('[Quark Ably] Client not connected');
     }
 
-    console.log(`[Pulsar Ably] Joining channel 'pulsar-room-${roomId}'`);
-    const channelName = `pulsar-room-${roomId}`;
+    console.log(`[Quark Ably] Joining channel 'quark-room-${roomId}'`);
+    const channelName = `quark-room-${roomId}`;
     this.channel = this.client.channels.get(channelName);
 
     // Subscribe to presence (peer discovery)
     this.channel.presence.subscribe('enter', (member) => {
       if (member.clientId === this.peerId) return;
-      console.log(`[Pulsar Ably] Presence ENTER: ${member.clientId}`);
+      console.log(`[Quark Ably] Presence ENTER: ${member.clientId}`);
       this.messageHandler?.({
         type: 'peer-joined',
         peerId: member.clientId,
@@ -104,7 +105,7 @@ export class AblySignaling {
 
     this.channel.presence.subscribe('leave', (member) => {
       if (member.clientId === this.peerId) return;
-      console.log(`[Pulsar Ably] Presence LEAVE: ${member.clientId}`);
+      console.log(`[Quark Ably] Presence LEAVE: ${member.clientId}`);
       this.messageHandler?.({
         type: 'peer-left',
         peerId: member.clientId,
@@ -114,7 +115,7 @@ export class AblySignaling {
     // Subscribe to incoming signal messages
     this.channel.subscribe('signal', (message) => {
       const msg = message.data as SignalingMessage;
-      if (msg.toPeer === this.peerId) {
+      if ('toPeer' in msg && msg.toPeer === this.peerId) {
         this.messageHandler?.(msg);
       }
     });
@@ -138,13 +139,13 @@ export class AblySignaling {
 
   send(msg: SignalingMessage): void {
     if (!this.channel) {
-      console.warn('[Pulsar Ably] Cannot send message, channel not active');
+      console.warn('[Quark Ably] Cannot send message, channel not active');
       return;
     }
 
     // Publish to Ably channel
     this.channel.publish('signal', msg).catch((err) => {
-      console.error('[Pulsar Ably] Failed to publish message:', err);
+      console.error('[Quark Ably] Failed to publish message:', err);
     });
   }
 

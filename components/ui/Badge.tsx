@@ -14,16 +14,16 @@ export const Badge: React.FC<BadgeProps> = ({ variant = 'default', label, classN
       className={cn(
         "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-mono border",
         {
-          // Connected: green dot
-          "border-[#2e2e2e] bg-[#1d271e] text-[#4caf50]": variant === 'connected',
-          // Connecting: yellow pulsing dot
-          "border-[#2e2e2e] bg-[#2d281a] text-[#ffc107]": variant === 'connecting',
-          // Disconnected: red dot
-          "border-[#2e2e2e] bg-[#2d1d1d] text-[#ef5350]": variant === 'disconnected',
-          // LAN: subtle
-          "border-border-default bg-bg-surface text-text-muted": variant === 'lan',
+          // Connected: photon green
+          "border-photon/30 bg-photon/10 text-photon": variant === 'connected',
+          // Connecting: pulse amber
+          "border-pulse/30 bg-pulse/10 text-pulse": variant === 'connecting',
+          // Disconnected: decay red
+          "border-decay/30 bg-decay/10 text-decay": variant === 'disconnected',
+          // LAN: flux cyan
+          "border-flux/30 bg-flux/10 text-flux": variant === 'lan',
           // Default
-          "border-border-default bg-bg-surface text-text-primary": variant === 'default',
+          "border-border bg-bg-surface text-fg-primary": variant === 'default',
         },
         className
       )}
@@ -35,9 +35,9 @@ export const Badge: React.FC<BadgeProps> = ({ variant = 'default', label, classN
           className={cn(
             "w-1.5 h-1.5 rounded-full shrink-0",
             {
-              "bg-status-green": variant === 'connected',
-              "bg-status-yellow": variant === 'connecting',
-              "bg-status-red": variant === 'disconnected',
+              "bg-photon": variant === 'connected',
+              "bg-pulse": variant === 'connecting',
+              "bg-decay": variant === 'disconnected',
               "animate-pulse": isPulsing,
             }
           )}

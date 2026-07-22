@@ -1,12 +1,35 @@
-// server.js — run with: node server.js
+// server.js — WebSocket signaling server for Quark P2P chat
+// Supports both online mode (with rate limiting) and offline LAN mode (relaxed limits)
+// Usage: node server.js
+// 
+// Environment variables:
+//   OFFLINE_MODE: Set to "true" to run in offline LAN mode with relaxed rate limiting
+//   HTTPS_ENABLED: Set to "true" to run over HTTPS/WSS (requires TLS_CERT_PATH and TLS_KEY_PATH)
+//   TLS_CERT_PATH: Path to PEM-encoded TLS certificate
+//   TLS_KEY_PATH: Path to PEM-encoded TLS private key
+//   SIGNALING_PORT: Port to bind to (default: 8080)
+
 const { WebSocketServer } = require('ws');
 const http = require('http');
+const https = require('https');
+const fs = require('fs');
 
-const CONCURRENT_CONN_LIMIT = Number(process.env.SIGNAL_MAX_CONCURRENT_CONN) || 1000;
-const IP_CONN_LIMIT = Number(process.env.SIGNAL_IP_CONN_LIMIT) || 20;
-const IP_JOIN_LIMIT = Number(process.env.SIGNAL_IP_JOIN_LIMIT) || 10;
-const SOCKET_MSG_LIMIT = Number(process.env.SIGNAL_SOCKET_MSG_LIMIT) || 50;
-const WINDOW_MS = 60000; // 60s
+const OFFLINE_MODE = process.env.OFFLINE_MODE === 'true';
+
+const CONCURRENT_CONN_LIMIT = Number(process.env.SIGNAL_MAX_CONCURRENT_CONN) || (OFFLINE_MODE ? 50 : 1000);
+const IP_CONN_LIMIT = Number(process.env.SIGNAL_IP_CONN_LIMIT) || (OFFLINE_MODE ? 100 : 20);
+const IP_JOIN_LIMIT = Number(process.env.SIGNAL_IP_JOIN_LIMIT) || (OFFLINE_MODE ? 50 : 10);
+const SOCKET_MSG_LIMIT = Number(process.env.SIGNAL_SOCKET_MSG_LIMIT) || (OFFLINE_MODE ? 200 : 50);
+const MAX_MESSAGE_SIZE = Number(process.env.SIGNAL_MAX_MESSAGE_SIZE) || 131072;
+const WINDOW_MS = 60000;
+const CONN_LIFETIME_MS = Number(process.env.SIGNAL_CONN_LIFETIME_MS) || (OFFLINE_MODE ? 86400000 : 3600000);
+const ALLOWED_ORIGINS = (process.env.SIGNAL_ALLOWED_ORIGINS || '').split(',').filter(Boolean);
+
+const SIGNALING_PORT = Number(process.env.SIGNALING_PORT) || 8080;
+
+const HTTPS_ENABLED = process.env.HTTPS_ENABLED === 'true';
+const TLS_CERT_PATH = process.env.TLS_CERT_PATH || './certs/lan-cert.pem';
+const TLS_KEY_PATH = process.env.TLS_KEY_PATH || './certs/lan-key.pem';
 
 // Simple rolling window rate limiter for IP tracking
 class RollingWindowLimiter {
@@ -45,7 +68,28 @@ class RollingWindowLimiter {
   }
 }
 
-const server = http.createServer();
+// Create HTTP or HTTPS server
+let server;
+if (HTTPS_ENABLED) {
+  if (!fs.existsSync(TLS_CERT_PATH) || !fs.existsSync(TLS_KEY_PATH)) {
+    console.error(`[Quark] HTTPS_ENABLED=true but certificate files missing:`);
+    console.error(`  Cert: ${TLS_CERT_PATH}`);
+    console.error(`  Key:  ${TLS_KEY_PATH}`);
+    console.error('[Quark] Please generate self-signed certificates or provide valid paths.');
+    process.exit(1);
+  }
+  
+  const certOptions = {
+    cert: fs.readFileSync(TLS_CERT_PATH, 'utf-8'),
+    key: fs.readFileSync(TLS_KEY_PATH, 'utf-8'),
+  };
+  server = https.createServer(certOptions);
+  console.log('[Quark] HTTPS mode enabled');
+} else {
+  server = http.createServer();
+  console.log('[Quark] HTTP mode enabled');
+}
+
 const wss = new WebSocketServer({ server });
 
 let totalConnectedSockets = 0;
@@ -73,8 +117,23 @@ function getClientIp(req) {
   return req.socket.remoteAddress || 'unknown';
 }
 
+function isValidOrigin(req) {
+  if (OFFLINE_MODE) return true;
+  if (ALLOWED_ORIGINS.length === 0) return true;
+  const origin = req.headers['origin'] || req.headers['sec-websocket-origin'] || '';
+  return ALLOWED_ORIGINS.some(allowed => origin.startsWith(allowed));
+}
+
 wss.on('connection', (ws, req) => {
   const clientIp = getClientIp(req);
+
+  if (!isValidOrigin(req)) {
+    logEvent('ORIGIN_REJECTED', clientIp, `Origin: ${req.headers['origin'] || 'none'}`);
+    ws.close(4000, 'origin-rejected');
+    return;
+  }
+
+  const connStartedAt = Date.now();
 
   // 1. Overall server connection limit check
   if (totalConnectedSockets >= CONCURRENT_CONN_LIMIT) {
@@ -116,6 +175,20 @@ wss.on('connection', (ws, req) => {
       return;
     }
 
+    // 4. Message size limit
+    if (rawData.length > MAX_MESSAGE_SIZE) {
+      logEvent('MSG_TOO_LARGE', clientIp, `Size: ${rawData.length}`);
+      ws.close(4029, 'message-too-large');
+      return;
+    }
+
+    // 5. Connection lifetime limit
+    if (Date.now() - connStartedAt > CONN_LIFETIME_MS) {
+      logEvent('CONN_LIFETIME_EXPIRED', clientIp);
+      ws.close(4000, 'connection-expired');
+      return;
+    }
+
     try {
       const msg = JSON.parse(rawData.toString());
       if (!msg || typeof msg !== 'object') {
@@ -125,7 +198,7 @@ wss.on('connection', (ws, req) => {
 
       const { type, roomId, peerId, toPeer, sdp, candidate } = msg;
 
-      // 4. Validate string fields
+      // 6. Validate string fields
       if (typeof type !== 'string' || type.length > 32) {
         logEvent('BAD_TYPE', clientIp, 'Type invalid or too long');
         return;
@@ -310,6 +383,29 @@ server.on('close', () => {
   clearInterval(cleanupInterval);
 });
 
-server.listen(8080, () => {
-  console.log('[Pulsar] Signaling server running on ws://localhost:8080');
+// Bind to 0.0.0.0 (all interfaces) so it's reachable from other devices on the LAN
+const protocol = HTTPS_ENABLED ? 'wss' : 'ws';
+server.listen(SIGNALING_PORT, '0.0.0.0', () => {
+  const mode = OFFLINE_MODE ? 'OFFLINE' : 'ONLINE';
+  console.log(`[Quark] Signaling server (${mode} mode) running on ${protocol}://0.0.0.0:${SIGNALING_PORT}`);
+  console.log(`[Quark] Rate limits - Conn: ${IP_CONN_LIMIT}/min, Join: ${IP_JOIN_LIMIT}/min, Msg: ${SOCKET_MSG_LIMIT}/sec`);
+});
+      return ws.terminate();
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 30000);
+
+server.on('close', () => {
+  clearInterval(pingInterval);
+  clearInterval(cleanupInterval);
+});
+
+// Bind to 0.0.0.0 (all interfaces) so it's reachable from other devices on the LAN
+const protocol = HTTPS_ENABLED ? 'wss' : 'ws';
+server.listen(SIGNALING_PORT, '0.0.0.0', () => {
+  const mode = OFFLINE_MODE ? 'OFFLINE' : 'ONLINE';
+  console.log(`[Quark] Signaling server (${mode} mode) running on ${protocol}://0.0.0.0:${SIGNALING_PORT}`);
+  console.log(`[Quark] Rate limits - Conn: ${IP_CONN_LIMIT}/min, Join: ${IP_JOIN_LIMIT}/min, Msg: ${SOCKET_MSG_LIMIT}/sec`);
 });

@@ -10,15 +10,20 @@ export interface DBFile {
   ts: number;
 }
 
-class PulsarDatabase extends Dexie {
+class QuarkDatabase extends Dexie {
   messages!: Table<Message, string>;
   files!: Table<DBFile, string>;
   rooms!: Table<Room, string>;
 
   constructor() {
-    super('PulsarDB');
+    super('QuarkDB');
     this.version(1).stores({
       messages: 'id, roomId, ts',
+      files: 'id, ts',
+      rooms: 'roomId, createdAt',
+    });
+    this.version(2).stores({
+      messages: 'id, roomId, ts, deleteAt',
       files: 'id, ts',
       rooms: 'roomId, createdAt',
     });
@@ -26,7 +31,7 @@ class PulsarDatabase extends Dexie {
 }
 
 // Instantiate database
-export const db = new PulsarDatabase();
+export const db = new QuarkDatabase();
 
 // Database helper functions
 export async function saveMessage(msg: Message): Promise<void> {
@@ -126,5 +131,41 @@ export async function getRoom(roomId: string): Promise<Room | null> {
   } catch (error) {
     console.error('Failed to get room from IndexedDB:', error);
     return null;
+  }
+}
+
+export async function cleanupExpiredMessages(): Promise<void> {
+  try {
+    const now = Date.now();
+    const expired = await db.messages.where('deleteAt').below(now).toArray();
+    if (expired.length === 0) return;
+    const fileIds = expired.filter(m => m.type === 'file' && m.fileRef).map(m => m.fileRef!.id);
+    const msgIds = expired.map(m => m.id);
+    await db.messages.bulkDelete(msgIds);
+    if (fileIds.length > 0) {
+      await db.files.bulkDelete(fileIds);
+    }
+  } catch (error) {
+    console.error('Failed to cleanup expired messages:', error);
+  }
+}
+
+export async function panicWipe(): Promise<void> {
+  try {
+    await db.messages.clear();
+    await db.files.clear();
+    await db.rooms.clear();
+  } catch (error) {
+    console.error('Failed to clear IndexedDB:', error);
+  }
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+  } catch {}
+  if (typeof caches !== 'undefined') {
+    const keys = await caches.keys();
+    for (const key of keys) {
+      try { await caches.delete(key); } catch {}
+    }
   }
 }

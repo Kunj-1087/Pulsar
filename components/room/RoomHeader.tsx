@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Check, QrCode, Share2, Terminal, Users, X, Lock, ShieldAlert } from 'lucide-react';
+import { Copy, Check, QrCode, Share2, Terminal, Users, X, Lock, ShieldAlert, Radio, Shield } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { isOfflineMode } from '../../lib/utils';
+import { SecurityCenter } from './SecurityCenter';
 
 interface RoomHeaderProps {
   roomId: string;
@@ -16,25 +18,28 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
 
   const [identity, setIdentity] = useState<{ handle: string; peerColor: string } | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showSecurityCenter, setShowSecurityCenter] = useState(false);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('pulsar_identity');
+      const saved = localStorage.getItem('quark_identity');
       if (saved) {
         try {
           setIdentity(JSON.parse(saved));
         } catch {}
       }
+      setOfflineMode(isOfflineMode());
     }
   }, []);
 
   const confirmReset = () => {
     setRoomStatus('closing');
-    localStorage.removeItem('pulsar_identity');
-    localStorage.removeItem('pulsar-displayName');
+    localStorage.removeItem('quark_identity');
+    localStorage.removeItem('quark-displayName');
     reset();
     setRoomStatus('closed');
     window.location.href = '/';
@@ -43,7 +48,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
   // Compute invite link
   const inviteLink = typeof window !== 'undefined'
     ? `${window.location.origin}/?room=${roomId}`
-    : `https://pulsar.chat/?room=${roomId}`;
+    : `https://quark.chat/?room=${roomId}`;
 
   const handleCopyCode = async () => {
     try {
@@ -69,8 +74,8 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: 'Join my Pulsar P2P Chat Room',
-          text: `Connect directly to my device. Room code: ${roomId}`,
+          title: 'Quark — Chat without the middle',
+          text: `Join my peer-to-peer chat. Room code: ${roomId}`,
           url: inviteLink,
         });
       } catch {
@@ -93,32 +98,38 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
 
   return (
     <>
-      <header className="h-[52px] border-b border-border-default bg-bg-primary px-4 flex items-center justify-between select-none">
+      <header className="h-13 border-b border-border bg-bg-base px-4 flex items-center justify-between select-none">
         {/* Left: Wordmark */}
         <div className="flex items-center gap-2">
-          <span className="font-mono font-bold text-sm tracking-widest text-text-bright">
-            PULSAR
+          <span className="type-wordmark text-sm text-fg-primary group cursor-default">
+            q<span className="group-hover:text-quantum transition-colors duration-300 ease-standard">ua</span>rk
           </span>
-          <span className="hidden md:inline text-[9px] font-mono text-text-muted px-1.5 py-0.5 border border-border-default rounded-sm uppercase">
+          <span className="hidden md:inline type-uppercase-label text-fg-muted px-1.5 py-0.5 border border-border rounded-sm">
             v1.0-P2P
           </span>
           {hasPeers && (
             allPeersE2EE ? (
-              <span className="flex items-center gap-1 text-[10px] font-mono text-status-green border border-status-green/30 bg-status-green/10 rounded px-1.5 py-0.5" title="All peer channels are End-to-End Encrypted">
+              <span className="flex items-center gap-1 type-uppercase-label text-quantum border border-quantum/30 bg-quantum/10 rounded px-1.5 py-0.5" title="End-to-end encrypted">
                 <Lock className="w-2.5 h-2.5" />
                 <span>E2EE</span>
               </span>
             ) : anyPeerE2EEFailed ? (
-              <span className="flex items-center gap-1 text-[10px] font-mono text-status-red border border-status-red/30 bg-status-red/10 rounded px-1.5 py-0.5 animate-pulse" title="Security alert: E2EE key agreement failed for some peers">
+              <span className="flex items-center gap-1 type-uppercase-label text-decay border border-decay/30 bg-decay/10 rounded px-1.5 py-0.5" title="E2EE key agreement failed">
                 <ShieldAlert className="w-2.5 h-2.5" />
                 <span>E2EE ALERT</span>
               </span>
             ) : (
-              <span className="flex items-center gap-1 text-[10px] font-mono text-status-yellow border border-status-yellow/30 bg-status-yellow/10 rounded px-1.5 py-0.5" title="Encrypting peer channels...">
-                <Lock className="w-2.5 h-2.5 animate-pulse" />
-                <span>SECURE PENDING</span>
+              <span className="flex items-center gap-1 type-uppercase-label text-pulse border border-pulse/30 bg-pulse/10 rounded px-1.5 py-0.5" title="Encrypting channels...">
+                <Lock className="w-2.5 h-2.5" />
+                <span>SECURING</span>
               </span>
             )
+          )}
+          {offlineMode && (
+            <span className="flex items-center gap-1 type-uppercase-label text-flux border border-flux/30 bg-flux/10 rounded px-1.5 py-0.5" title="Offline LAN mode">
+              <Radio className="w-2.5 h-2.5" />
+              <span>OFFLINE LAN</span>
+            </span>
           )}
         </div>
 
@@ -127,36 +138,36 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
           {identity && (
             <div className="hidden sm:flex items-center gap-2">
               <span
-                className="w-2 h-2 rounded-full shrink-0 animate-[pulsar-message-in-system_250ms_ease-in_forwards]"
+                className="w-2 h-2 rounded-full shrink-0 animate-[quark-message-in-system_250ms_ease-in_forwards]"
                 style={{ backgroundColor: identity.peerColor }}
               />
-              <span className="font-mono text-xs text-[#ced0ce] select-none">
+              <span className="type-peer-name text-fg-primary select-none">
                 @{identity.handle}
               </span>
               <button
                 onClick={() => setShowResetConfirm(true)}
-                className="text-[11px] font-sans text-text-muted hover:text-text-bright hover:underline cursor-pointer focus:outline-none"
+                className="text-caption font-sans text-fg-muted hover:text-fg-primary hover:underline cursor-pointer focus:outline-none"
               >
                 Reset identity
               </button>
             </div>
           )}
 
-          <div className="flex items-center bg-[#1a1a1a] border border-border-default rounded px-3 py-1 gap-2.5">
-            <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
+          <div className="flex items-center bg-bg-elevated border border-border rounded px-3 py-1 gap-2.5">
+            <span className="type-uppercase-label text-fg-muted">
               Room Code
             </span>
-            <span className="font-mono font-bold text-text-bright tracking-widest select-all text-sm">
+            <span className="type-hero-numeral text-fg-primary text-sm font-bold select-all">
               {roomId}
             </span>
             <button
               onClick={handleCopyCode}
-              className="text-text-muted hover:text-text-bright transition-colors focus:outline-none"
+              className="text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
               title="Copy Code"
               aria-label="Copy Room Code"
             >
               {copiedCode ? (
-                <Check className="w-3.5 h-3.5 text-status-green" />
+                <Check className="w-3.5 h-3.5 text-photon" />
               ) : (
                 <Copy className="w-3.5 h-3.5" />
               )}
@@ -168,12 +179,12 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
         <div className="flex items-center gap-2">
           {/* Peer Count Badge */}
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 px-2.5 h-8 bg-bg-surface border border-border-default rounded font-mono text-xs text-text-primary">
-              <Users className="w-3.5 h-3.5 text-text-muted" />
+            <div className="flex items-center gap-1.5 px-2.5 h-8 bg-bg-surface border border-border rounded font-mono text-xs text-fg-primary">
+              <Users className="w-3.5 h-3.5 text-fg-subtle" />
               <span>{connectedPeersCount}</span>
             </div>
             {connectedPeersCount >= 5 && (
-              <span className="text-[10px] font-mono text-status-yellow uppercase tracking-wider">
+              <span className="type-uppercase-label text-pulse">
                 Room full
               </span>
             )}
@@ -188,7 +199,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
             title="Show QR Code"
             aria-label="Show QR Code"
           >
-            <QrCode className="w-4 h-4 text-text-primary" />
+            <QrCode className="w-4 h-4 text-fg-primary" />
           </Button>
 
           {/* Share Trigger */}
@@ -201,10 +212,22 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
             aria-label="Share Room Link"
           >
             {copiedLink ? (
-              <Check className="w-4 h-4 text-status-green" />
+              <Check className="w-4 h-4 text-photon" />
             ) : (
-              <Share2 className="w-4 h-4 text-text-primary" />
+              <Share2 className="w-4 h-4 text-fg-primary" />
             )}
+          </Button>
+
+          {/* Security Center */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowSecurityCenter(true)}
+            className="w-8 h-8 p-0"
+            title="Security Center"
+            aria-label="Open Security Center"
+          >
+            <Shield className="w-4 h-4 text-fg-primary" />
           </Button>
 
           {/* Dev mode Toggle */}
@@ -223,41 +246,41 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
 
       {/* QR Code Modal Overlay */}
       {showQRModal && (
-        <div className="fixed inset-0 z-50 bg-[#121212]/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-[340px] bg-bg-surface border border-border-default rounded-md p-6 relative">
+        <div className="fixed inset-0 z-50 bg-bg-base/80 flex items-center justify-center p-4">
+          <div className="w-full max-w-[340px] bg-bg-surface border border-border rounded-md p-6 relative">
             <button
               onClick={() => setShowQRModal(false)}
-              className="absolute top-4 right-4 text-text-muted hover:text-text-bright transition-colors focus:outline-none"
+              className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
               aria-label="Close modal"
             >
               <X className="w-4 h-4" />
             </button>
 
             <div className="text-center mt-2">
-              <h3 className="font-mono text-xs uppercase tracking-wider text-text-muted mb-4">
+              <h3 className="type-uppercase-label text-fg-muted mb-4">
                 Scan to Join Room
               </h3>
               
               {/* QR Code Canvas */}
-              <div className="bg-[#e6e8e6] p-4 inline-block rounded-sm mb-4">
+              <div className="bg-fg-primary p-4 inline-block rounded-sm mb-4">
                 <QRCodeSVG
                   value={inviteLink}
                   size={200}
-                  bgColor="#e6e8e6"
-                  fgColor="#191919"
+                  bgColor="#f5f5f5"
+                  fgColor="#0a0a0a"
                   level="M"
                 />
               </div>
 
               <div className="space-y-3">
-                <p className="text-[11px] font-sans text-text-muted leading-relaxed">
-                  Scan this code on another device to join this direct encrypted peer channel.
+                <p className="text-small font-sans text-fg-muted leading-relaxed">
+                  Scan with another device to join this room.
                 </p>
                 <div className="flex gap-1.5">
                   <Input
                     readOnly
                     value={inviteLink}
-                    className="h-8 text-xs font-mono select-all bg-[#121212]"
+                    className="h-8 text-caption font-mono select-all bg-bg-elevated"
                   />
                   <Button
                     variant="ghost"
@@ -273,23 +296,27 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
           </div>
         </div>
       )}
+      {/* Security Center Modal */}
+      {showSecurityCenter && (
+        <SecurityCenter onClose={() => setShowSecurityCenter(false)} />
+      )}
+
       {/* Reset Confirmation Overlay Modal */}
-      {showResetConfirm && (
-        <div className="fixed inset-0 z-50 bg-[#121212]/85 flex items-center justify-center p-4">
-          <div className="w-full max-w-[320px] bg-bg-surface border border-border-default rounded-md p-5 select-none animate-[pulsar-sdp-modal-in_200ms_cubic-bezier(0.16,1,0.3,1)_forwards]">
-            <p className="font-sans text-xs text-text-primary leading-normal mb-4">
-              This will clear your handle and color. You will need to pick a new one. Continue?
+      {showResetConfirm && (              <div className="fixed inset-0 z-50 bg-bg-base/85 flex items-center justify-center p-4">
+          <div className="w-full max-w-[320px] bg-bg-surface border border-border rounded-md p-5 select-none animate-[quark-sdp-modal-in_200ms_cubic-bezier(0.16,1,0.3,1)_forwards]">
+            <p className="font-sans text-small text-fg-primary leading-normal mb-4">
+              This will clear your handle. You will need to pick a new one.
             </p>
             <div className="flex items-center justify-end gap-3 font-mono text-[11px]">
               <button
                 onClick={() => setShowResetConfirm(false)}
-                className="text-text-muted hover:text-text-bright hover:underline focus:outline-none"
+                className="text-fg-muted hover:text-fg-primary hover:underline focus:outline-none"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmReset}
-                className="bg-status-red text-text-bright px-3 py-1.5 rounded hover:bg-status-red/90 font-medium transition-colors focus:outline-none animate-pulse"
+                className="bg-decay text-fg-primary px-3 py-1.5 rounded hover:bg-decay-hover font-medium transition-colors focus:outline-none"
               >
                 Yes, reset
               </button>

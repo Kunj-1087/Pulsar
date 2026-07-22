@@ -37,31 +37,31 @@ export const Toast: React.FC<ToastProps> = ({ toast }) => {
       role={type === 'error' ? 'alert' : 'status'}
       aria-live="polite"
       className={cn(
-        "w-full max-w-sm bg-[#161616] border border-border-default/80 font-mono text-xs text-text-primary shadow-xl rounded overflow-hidden select-none p-3.5 flex items-start gap-3 transition-all duration-300 relative border-l-4 animate-[pulsar-toast-in_250ms_cubic-bezier(0.16,1,0.3,1)_forwards]",
+        "w-full max-w-sm bg-bg-elevated border border-border/80 font-mono text-caption text-fg-primary shadow-xl rounded overflow-hidden select-none p-3.5 flex items-start gap-3 transition-all duration-300 relative border-l-4 animate-[quark-toast-in_250ms_cubic-bezier(0.16,1,0.3,1)_forwards]",
         {
-          "border-l-status-green": type === 'success',
-          "border-l-status-yellow": type === 'warning',
-          "border-l-status-red": type === 'error',
-          "border-l-text-muted": type === 'info',
+          "border-l-photon": type === 'success',
+          "border-l-pulse": type === 'warning',
+          "border-l-decay": type === 'error',
+          "border-l-fg-muted": type === 'info',
         }
       )}
     >
       <Icon
         className={cn("w-4 h-4 shrink-0 mt-0.5", {
-          "text-status-green": type === 'success',
-          "text-status-yellow": type === 'warning',
-          "text-status-red": type === 'error',
-          "text-text-muted": type === 'info',
+          "text-photon": type === 'success',
+          "text-pulse": type === 'warning',
+          "text-decay": type === 'error',
+          "text-fg-muted": type === 'info',
         })}
       />
 
       <div className="flex-1 min-w-0 pr-4">
         {title && (
-          <p className="font-bold text-text-bright mb-0.5 tracking-wider uppercase text-[10px]">
+          <p className="font-bold text-fg-primary mb-0.5 tracking-wider uppercase text-micro">
             {title}
           </p>
         )}
-        <p className="leading-relaxed font-sans text-text-primary text-[13px]">{message}</p>
+        <p className="leading-relaxed font-sans text-fg-primary text-small">{message}</p>
         
         {action && (
           <button
@@ -69,7 +69,7 @@ export const Toast: React.FC<ToastProps> = ({ toast }) => {
               action.onClick();
               dismissToast(id);
             }}
-            className="mt-2 text-[10px] font-bold text-text-bright hover:underline uppercase bg-[#242424] hover:bg-[#2d2d2d] border border-border-default px-2 py-1 rounded-sm"
+            className="mt-2 text-micro font-bold text-fg-primary hover:underline uppercase bg-bg-hover hover:bg-bg-active border border-border px-2 py-1 rounded-sm"
           >
             {action.label}
           </button>
@@ -78,7 +78,7 @@ export const Toast: React.FC<ToastProps> = ({ toast }) => {
 
       <button
         onClick={() => dismissToast(id)}
-        className="absolute top-3 right-3 text-text-muted hover:text-text-bright transition-colors focus:outline-none"
+        className="absolute top-3 right-3 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
         aria-label="Dismiss toast"
       >
         <X className="w-3.5 h-3.5" />

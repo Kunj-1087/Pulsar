@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, ShieldAlert, Terminal, RefreshCw, FileText, ChevronRight } from 'lucide-react';
+import { X, ShieldAlert, Terminal, RefreshCw, FileText, ChevronRight, Radio } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
-import { formatBytes, cn } from '../../lib/utils';
+import { formatBytes, cn, isOfflineMode, getSignalingUrl } from '../../lib/utils';
 import { Button } from '../ui/Button';
 
 interface DevPanelProps {
@@ -167,21 +167,21 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
     <>
       <div
         className={cn(
-          "fixed top-0 right-0 h-full w-[360px] border-l border-border-default bg-[#111111] flex flex-col font-mono text-xs select-none text-text-primary z-40 transition-all",
+          "fixed top-0 right-0 h-full w-[360px] border-l border-border bg-bg-base flex flex-col font-mono text-caption select-none text-fg-primary z-40 transition-all",
           devModeEnabled
             ? "translate-x-0 opacity-100 duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]"
             : "translate-x-full opacity-0 pointer-events-none duration-180 ease-[cubic-bezier(0.4,0,1,1)]"
         )}
       >
         {/* Header */}
-        <div className="h-[52px] px-4 border-b border-border-default flex items-center justify-between bg-bg-primary">
-          <div className="flex items-center gap-2 text-text-bright">
-            <Terminal className="w-4 h-4 text-status-yellow" />
-            <span className="font-bold tracking-wider">DEV DIAGNOSTICS</span>
+        <div className="h-[52px] px-4 border-b border-border flex items-center justify-between bg-bg-base">
+          <div className="flex items-center gap-2 text-fg-primary">
+            <Terminal className="w-4 h-4 text-pulse" />
+            <span className="type-uppercase-label">Dev Diagnostics</span>
           </div>
           <button
             onClick={toggleDevMode}
-            className="text-text-muted hover:text-text-bright transition-colors focus:outline-none"
+            className="text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
             title="Close Panel"
           >
             <X className="w-4 h-4" />
@@ -192,131 +192,131 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
           
           {/* Section 1: Connection */}
-          <div className="border border-border-default rounded">
+          <div className="border border-border rounded">
             <button
               onClick={() => toggleSection('connection')}
-              className="w-full px-3 py-2 flex items-center justify-between bg-[#171717] font-semibold text-text-bright hover:bg-bg-surface text-left"
+              className="w-full px-3 py-2 flex items-center justify-between bg-bg-surface font-semibold text-fg-primary hover:bg-bg-hover text-left"
             >
-              <span>1. CONNECTION STATE</span>
+              <span className="type-uppercase-label">1. Connection State</span>
               <span className="flex items-center gap-0.5">
-                <span className="text-text-muted">[</span>
+                <span className="text-fg-muted">[</span>
                 <ChevronRight
                   className={cn(
-                    "w-3 h-3 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    "w-3 h-3 transition-transform duration-150 ease-standard",
                     expandedSection === 'connection' && "rotate-90"
                   )}
                 />
-                <span className="text-text-muted">]</span>
+                <span className="text-fg-muted">]</span>
               </span>
             </button>
             <div
               className={cn(
                 "transition-all overflow-hidden border-t",
                 expandedSection === 'connection'
-                  ? "max-h-[400px] opacity-100 border-border-default duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  ? "max-h-[400px] opacity-100 border-border duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
                   : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
               )}
             >
-              <div className="p-3 space-y-2 bg-[#121212]/50">
+              <div className="p-3 space-y-2 bg-bg-base/50">
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Signaling Transport:</span>
-                  <span className="font-bold text-[#e6e8e6]">{signalingDriverName}</span>
+                  <span className="text-fg-muted">Signaling Transport:</span>
+                  <span className="font-bold text-fg-primary">{signalingDriverName}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Active Peer ID:</span>
-                  <span className="text-text-bright truncate max-w-[180px]">{activePeer?.peerId || 'None'}</span>
+                  <span className="text-fg-muted">Active Peer ID:</span>
+                  <span className="text-fg-primary truncate max-w-[180px]">{activePeer?.peerId || 'None'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">ICE Conn State:</span>
+                  <span className="text-fg-muted">ICE Conn State:</span>
                   <span
                     className={cn(
                       "font-bold transition-colors",
-                      iceStateHighlight ? "text-text-bright duration-100" : "duration-300",
-                      !iceStateHighlight && {
-                        "text-status-green": activePeer?.connectionState === 'connected',
-                        "text-status-yellow": activePeer?.connectionState === 'negotiating' || activePeer?.connectionState === 'new',
-                        "text-amber-600": !activePeer?.connectionState || activePeer?.connectionState === 'idle',
-                        "text-status-red": ['failed', 'disconnected', 'closed'].includes(activePeer?.connectionState || ''),
-                      }
+                      iceStateHighlight ? "text-fg-primary duration-100" : "duration-300",
+                      !iceStateHighlight && (
+                        activePeer?.connectionState === 'connected' ? 'text-photon' :
+                        (activePeer?.connectionState === 'negotiating' || activePeer?.connectionState === 'new') ? 'text-pulse' :
+                        !activePeer?.connectionState ? 'text-pulse' :
+                        'text-decay'
+                      )
                     )}
                   >
                     {activePeer?.connectionState?.toUpperCase() || 'IDLE'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Candidate Type:</span>
-                  <span className="text-text-bright capitalize">{connectionStats?.connectionType || 'Unknown'}</span>
+                  <span className="text-fg-muted">Candidate Type:</span>
+                  <span className="text-fg-primary capitalize">{connectionStats?.connectionType || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Local Candidate:</span>
-                  <span className="text-text-bright capitalize">{connectionStats?.localCandidateType || 'Unknown'}</span>
+                  <span className="text-fg-muted">Local Candidate:</span>
+                  <span className="text-fg-primary capitalize">{connectionStats?.localCandidateType || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Remote Candidate:</span>
-                  <span className="text-text-bright capitalize">{connectionStats?.remoteCandidateType || 'Unknown'}</span>
+                  <span className="text-fg-muted">Remote Candidate:</span>
+                  <span className="text-fg-primary capitalize">{connectionStats?.remoteCandidateType || 'Unknown'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">TURN Candidates:</span>
-                  <span className={cn(connectionStats?.turnCandidatesGathered ? "text-status-green font-bold" : "text-text-muted")}>
+                  <span className="text-fg-muted">TURN Candidates:</span>
+                  <span className={cn(connectionStats?.turnCandidatesGathered ? "text-photon font-bold" : "text-fg-muted")}>
                     {connectionStats?.turnCandidatesGathered ? 'GATHERED' : 'NONE'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">TURN Relaying:</span>
-                  <span className={cn(connectionStats?.turnUsed ? "text-status-yellow font-bold" : "text-text-muted")}>
+                  <span className="text-fg-muted">TURN Relaying:</span>
+                  <span className={cn(connectionStats?.turnUsed ? "text-pulse font-bold" : "text-fg-muted")}>
                     {connectionStats?.turnUsed ? 'ACTIVE' : 'INACTIVE'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Data Channel:</span>
+                  <span className="text-fg-muted">Data Channel:</span>
                   <span
                     className={cn(
                       "font-bold transition-colors",
-                      channelStateHighlight ? "text-text-bright duration-100" : "duration-300",
+                      channelStateHighlight ? "text-fg-primary duration-100" : "duration-300",
                       !channelStateHighlight && (
-                        connectionStats?.channelState === 'open' ? 'text-status-green' : 'text-status-red'
+                        connectionStats?.channelState === 'open' ? 'text-photon' : 'text-decay'
                       )
                     )}
                   >
                     {connectionStats?.channelState?.toUpperCase() || 'CLOSED'}
                   </span>
                 </div>
-                <div className="flex justify-between border-t border-border-default/30 pt-1.5 mt-1.5">
-                  <span className="text-text-muted">E2EE Status:</span>
+                <div className="flex justify-between border-t border-border/30 pt-1.5 mt-1.5">
+                  <span className="text-fg-muted">E2EE Status:</span>
                   <span
                     className={cn(
                       "font-bold",
-                      connectionStats?.e2eeStatus === 'established' && "text-status-green",
-                      connectionStats?.e2eeStatus === 'pending' && "text-status-yellow animate-pulse",
-                      connectionStats?.e2eeStatus === 'failed' && "text-status-red"
+                      connectionStats?.e2eeStatus === 'established' && "text-photon",
+                      connectionStats?.e2eeStatus === 'pending' && "text-pulse",
+                      connectionStats?.e2eeStatus === 'failed' && "text-decay"
                     )}
                   >
                     {connectionStats?.e2eeStatus?.toUpperCase() || 'PENDING'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Safety Number:</span>
-                  <span className="text-text-bright font-bold select-all tracking-wider">
+                  <span className="text-fg-muted">Safety Number:</span>
+                  <span className="text-fg-primary font-bold select-all tracking-wider">
                     {connectionStats?.e2eeSafetyNumber || 'None'}
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Key Derivation:</span>
-                  <span className="text-text-muted text-[10px] truncate max-w-[150px]" title="ECDH P-256 → HKDF SHA-256 → AES-GCM 256">
+                  <span className="text-fg-muted">Key Derivation:</span>
+                  <span className="text-fg-muted text-micro truncate max-w-[150px]" title="ECDH P-256 → HKDF SHA-256 → AES-GCM 256">
                     ECDH P-256 → HKDF → AES-256-GCM
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">E2EE Encrypted:</span>
-                  <span className="text-text-bright">{connectionStats?.e2eeMessagesEncrypted ?? 0} msgs</span>
+                  <span className="text-fg-muted">E2EE Encrypted:</span>
+                  <span className="text-fg-primary">{connectionStats?.e2eeMessagesEncrypted ?? 0} msgs</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">E2EE Decrypted:</span>
-                  <span className="text-text-bright">{connectionStats?.e2eeMessagesDecrypted ?? 0} msgs</span>
+                  <span className="text-fg-muted">E2EE Decrypted:</span>
+                  <span className="text-fg-primary">{connectionStats?.e2eeMessagesDecrypted ?? 0} msgs</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">E2EE Decrypt Failures:</span>
-                  <span className={cn((connectionStats?.e2eeDecryptionFailures ?? 0) > 0 ? "text-status-red font-bold" : "text-text-bright")}>
+                  <span className="text-fg-muted">E2EE Decrypt Failures:</span>
+                  <span className={cn((connectionStats?.e2eeDecryptionFailures ?? 0) > 0 ? "text-decay font-bold" : "text-fg-primary")}>
                     {connectionStats?.e2eeDecryptionFailures ?? 0}
                   </span>
                 </div>
@@ -325,35 +325,35 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
           </div>
 
           {/* Section 2: Realtime Stats */}
-          <div className="border border-border-default rounded">
+          <div className="border border-border rounded">
             <button
               onClick={() => toggleSection('stats')}
-              className="w-full px-3 py-2 flex items-center justify-between bg-[#171717] font-semibold text-text-bright hover:bg-bg-surface text-left"
+              className="w-full px-3 py-2 flex items-center justify-between bg-bg-surface font-semibold text-fg-primary hover:bg-bg-hover text-left"
             >
-              <span>2. NETWORK METRICS</span>
+              <span className="type-uppercase-label">2. Network Metrics</span>
               <span className="flex items-center gap-0.5">
-                <span className="text-text-muted">[</span>
+                <span className="text-fg-muted">[</span>
                 <ChevronRight
                   className={cn(
-                    "w-3 h-3 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    "w-3 h-3 transition-transform duration-150 ease-standard",
                     expandedSection === 'stats' && "rotate-90"
                   )}
                 />
-                <span className="text-text-muted">]</span>
+                <span className="text-fg-muted">]</span>
               </span>
             </button>
             <div
               className={cn(
                 "transition-all overflow-hidden border-t",
                 expandedSection === 'stats'
-                  ? "max-h-[400px] opacity-100 border-border-default duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  ? "max-h-[400px] opacity-100 border-border duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
                   : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
               )}
             >
-              <div className="p-3 space-y-2.5 bg-[#121212]/50">
+              <div className="p-3 space-y-2.5 bg-bg-base/50">
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Bytes Sent:</span>
-                  <span className="text-text-bright">
+                  <span className="text-fg-muted">Bytes Sent:</span>
+                  <span className="text-fg-primary">
                     <AnimatedCounter
                       value={connectionStats?.bytesSent || 0}
                       duration={300}
@@ -363,8 +363,8 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Bytes Received:</span>
-                  <span className="text-text-bright">
+                  <span className="text-fg-muted">Bytes Received:</span>
+                  <span className="text-fg-primary">
                     <AnimatedCounter
                       value={connectionStats?.bytesReceived || 0}
                       duration={300}
@@ -374,8 +374,8 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-text-muted">Messages Count:</span>
-                  <span className="text-text-bright">
+                  <span className="text-fg-muted">Messages Count:</span>
+                  <span className="text-fg-primary">
                     <AnimatedCounter
                       value={connectionStats?.messageCount || 0}
                       duration={300}
@@ -385,8 +385,8 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-text-muted">Latency RTT:</span>
-                  <span className={cn("text-text-bright", connectionStats?.latencyMs !== null && "pulsar-latency-fade-in")}>
+                  <span className="text-fg-muted">Latency RTT:</span>
+                  <span className={cn("text-fg-primary", connectionStats?.latencyMs !== null && "quark-latency-fade-in")}>
                     <AnimatedCounter
                       value={connectionStats?.latencyMs || 0}
                       duration={400}
@@ -412,54 +412,54 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
           </div>
 
           {/* Section 3: ICE gathering log */}
-          <div className="border border-border-default rounded">
+          <div className="border border-border rounded">
             <button
               onClick={() => toggleSection('ice')}
-              className="w-full px-3 py-2 flex items-center justify-between bg-[#171717] font-semibold text-text-bright hover:bg-bg-surface text-left"
+              className="w-full px-3 py-2 flex items-center justify-between bg-bg-surface font-semibold text-fg-primary hover:bg-bg-hover text-left"
             >
-              <span>3. GATHERING LOGS</span>
+              <span className="type-uppercase-label">3. ICE Log</span>
               <span className="flex items-center gap-0.5">
-                <span className="text-text-muted">[</span>
+                <span className="text-fg-muted">[</span>
                 <ChevronRight
                   className={cn(
-                    "w-3 h-3 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    "w-3 h-3 transition-transform duration-150 ease-standard",
                     expandedSection === 'ice' && "rotate-90"
                   )}
                 />
-                <span className="text-text-muted">]</span>
+                <span className="text-fg-muted">]</span>
               </span>
             </button>
             <div
               className={cn(
                 "transition-all overflow-hidden border-t",
                 expandedSection === 'ice'
-                  ? "max-h-[400px] opacity-100 border-border-default duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  ? "max-h-[400px] opacity-100 border-border duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
                   : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
               )}
             >
-              <div className="p-3 space-y-2 bg-[#121212]/50">
+              <div className="p-3 space-y-2 bg-bg-base/50">
                 <div className="flex justify-between items-center mb-1">
-                  <span className="text-[10px] text-text-muted uppercase">ICE Log Stream</span>
+                  <span className="text-micro text-fg-muted uppercase">ICE Log Stream</span>
                   <button
                     onClick={clearIceLog}
-                    className="text-status-red hover:underline focus:outline-none text-[10px]"
+                    className="text-decay hover:underline focus:outline-none text-micro"
                   >
                     CLEAR
                   </button>
                 </div>
                 <div
                   ref={logContainerRef}
-                  className="w-full h-40 overflow-y-auto bg-black p-2 border border-border-default/40 rounded text-[10px] text-text-primary leading-normal select-text space-y-1"
+                  className="w-full h-40 overflow-y-auto bg-bg-base p-2 border border-border/40 rounded text-micro text-fg-primary leading-normal select-text space-y-1"
                 >
                   {iceLog.length === 0 ? (
-                    <span className="text-text-muted">Waiting for events...</span>
+                    <span className="text-fg-muted">Waiting for events...</span>
                   ) : (
                     iceLog.map((log, index) => {
                       const delay = logAnimationDelays[index] || 0;
                       return (
                         <div
                           key={index}
-                          className="pulsar-log-entry border-b border-border-default/20 pb-0.5 last:border-0 opacity-0"
+                          className="quark-log-entry border-b border-border/20 pb-0.5 last:border-0 opacity-0"
                           style={{ animationDelay: `${delay}ms` }}
                         >
                           {log}
@@ -473,33 +473,33 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
           </div>
 
           {/* Section 4: SDP Viewer */}
-          <div className="border border-border-default rounded">
+          <div className="border border-border rounded">
             <button
               onClick={() => toggleSection('sdp')}
-              className="w-full px-3 py-2 flex items-center justify-between bg-[#171717] font-semibold text-text-bright hover:bg-bg-surface text-left"
+              className="w-full px-3 py-2 flex items-center justify-between bg-bg-surface font-semibold text-fg-primary hover:bg-bg-hover text-left"
             >
-              <span>4. SDP SESSION DESCRIPTIONS</span>
+              <span className="type-uppercase-label">4. SDP Session Descriptions</span>
               <span className="flex items-center gap-0.5">
-                <span className="text-text-muted">[</span>
+                <span className="text-fg-muted">[</span>
                 <ChevronRight
                   className={cn(
-                    "w-3 h-3 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                    "w-3 h-3 transition-transform duration-150 ease-standard",
                     expandedSection === 'sdp' && "rotate-90"
                   )}
                 />
-                <span className="text-text-muted">]</span>
+                <span className="text-fg-muted">]</span>
               </span>
             </button>
             <div
               className={cn(
                 "transition-all overflow-hidden border-t",
                 expandedSection === 'sdp'
-                  ? "max-h-[400px] opacity-100 border-border-default duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  ? "max-h-[400px] opacity-100 border-border duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
                   : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
               )}
             >
-              <div className="p-3 space-y-2 bg-[#121212]/50">
-                <p className="text-[10px] text-text-muted mb-2 leading-relaxed">
+              <div className="p-3 space-y-2 bg-bg-base/50">
+                <p className="text-micro text-fg-muted mb-2 leading-relaxed">
                   Inspect raw Session Description Protocol (SDP) configurations negotiated during handshake.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
@@ -525,32 +525,94 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
               </div>
             </div>
           </div>
+
+          {/* Section 5: Offline Mode */}
+          <div className="border border-border rounded">
+            <button
+              onClick={() => toggleSection('offline')}
+              className="w-full px-3 py-2 flex items-center justify-between bg-bg-surface font-semibold text-fg-primary hover:bg-bg-hover text-left"
+            >
+              <span className="type-uppercase-label">5. Offline Mode</span>
+              <span className="flex items-center gap-0.5">
+                <span className="text-fg-muted">[</span>
+                <ChevronRight
+                  className={cn(
+                    "w-3 h-3 transition-transform duration-150 ease-standard",
+                    expandedSection === 'offline' && "rotate-90"
+                  )}
+                />
+                <span className="text-fg-muted">]</span>
+              </span>
+            </button>
+            <div
+              className={cn(
+                "transition-all overflow-hidden border-t",
+                expandedSection === 'offline'
+                  ? "max-h-[300px] opacity-100 border-border duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
+              )}
+            >
+              <div className="p-3 space-y-2 bg-bg-base/50">
+                <div className="flex justify-between">
+                  <span className="text-fg-muted">Mode:</span>
+                  <span className="font-bold text-fg-primary flex items-center gap-1">
+                    <Radio className="w-3 h-3" />
+                    {isOfflineMode() ? 'OFFLINE LAN' : 'ONLINE'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-fg-muted">Signaling URL:</span>
+                  <span className="text-fg-primary font-mono text-micro truncate max-w-[200px]" title={getSignalingUrl()}>
+                    {getSignalingUrl().replace(/^wss?:\/\//, '')}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-fg-muted">Window Protocol:</span>
+                  <span className="text-fg-primary font-mono text-micro">
+                    {typeof window !== 'undefined' ? window.location.protocol : 'N/A'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-fg-muted">Window Host:</span>
+                  <span className="text-fg-primary font-mono text-micro">
+                    {typeof window !== 'undefined' ? window.location.host : 'N/A'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-fg-muted">ICE Servers:</span>
+                  <span className="text-fg-primary font-bold">
+                    {isOfflineMode() ? '[ empty ]' : '[ configured ]'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Footer banner */}
-        <div className="p-3 border-t border-border-default/80 bg-bg-primary text-[10px] text-text-muted flex items-center gap-1.5 select-none">
-          <ShieldAlert className="w-3.5 h-3.5 text-status-yellow shrink-0" />
-          <span>Local telemetry. No cloud reports.</span>
+        <div className="p-3 border-t border-border/80 bg-bg-base text-micro text-fg-muted flex items-center gap-1.5 select-none">
+          <ShieldAlert className="w-3.5 h-3.5 text-pulse shrink-0" />
+          <span>{'//'} Local telemetry. No cloud reports.</span>
         </div>
       </div>
 
       {/* SDP Viewer Modal Overlay */}
       {sdpModalType && (
-        <div className="fixed inset-0 z-50 bg-[#121212]/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-[500px] h-[460px] bg-bg-surface border border-border-default rounded-md p-6 flex flex-col relative select-text pulsar-sdp-modal-in">
+        <div className="fixed inset-0 z-50 bg-bg-base/80 flex items-center justify-center p-4">
+          <div className="w-full max-w-[500px] h-[460px] bg-bg-surface border border-border rounded-md p-6 flex flex-col relative select-text quark-sdp-modal-in">
             <button
               onClick={() => setSdpModalType(null)}
-              className="absolute top-4 right-4 text-text-muted hover:text-text-bright transition-colors focus:outline-none"
+              className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
             >
               <X className="w-4 h-4" />
             </button>
 
-            <h3 className="font-mono text-xs uppercase tracking-wider text-text-bright mb-4 flex items-center gap-1.5 select-none">
-              <FileText className="w-4 h-4 text-text-muted" />
+            <h3 className="type-uppercase-label text-fg-primary mb-4 flex items-center gap-1.5 select-none">
+              <FileText className="w-4 h-4 text-fg-muted" />
               <span>{sdpModalType === 'local' ? 'Local' : 'Remote'} Session SDP</span>
             </h3>
 
-            <div className="flex-1 w-full bg-black border border-border-default p-3 rounded font-mono text-[10px] text-text-primary leading-normal overflow-auto select-all relative">
+            <div className="flex-1 w-full bg-bg-base border border-border p-3 rounded font-mono text-micro text-fg-primary leading-normal overflow-auto select-all relative">
               <pre className="whitespace-pre-wrap sdp-text-container select-text">
                 {(sdpModalType === 'local' ? localSdp : remoteSdp) || ''}
               </pre>

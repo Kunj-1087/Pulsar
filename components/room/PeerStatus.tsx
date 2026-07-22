@@ -11,13 +11,13 @@ export const PeerStatus: React.FC = () => {
 
   if (roomStatus === 'reconnecting') {
     return (
-      <div className="h-8 bg-[#1a1a1a] border-b border-border-default px-4 flex items-center justify-between text-xs font-mono text-text-muted select-none">
+      <div className="h-8 bg-bg-elevated border-b border-border px-4 flex items-center justify-between text-caption font-mono text-fg-muted select-none">
         <div className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-status-yellow animate-pulse" />
-          <span className="text-status-yellow font-bold">Signaling connection lost. Reconnecting...</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-pulse animate-pulse" />
+          <span className="text-pulse font-bold">Signaling lost. Reconnecting...</span>
         </div>
         <div>
-          <span>Mesh Paused</span>
+          <span className="type-uppercase-label text-fg-muted">mesh paused</span>
         </div>
       </div>
     );
@@ -25,13 +25,13 @@ export const PeerStatus: React.FC = () => {
 
   if (roomStatus === 'failed') {
     return (
-      <div className="h-8 bg-[#1a1a1a] border-b border-border-default px-4 flex items-center justify-between text-xs font-mono text-text-muted select-none">
+      <div className="h-8 bg-bg-elevated border-b border-border px-4 flex items-center justify-between text-caption font-mono text-fg-muted select-none">
         <div className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-status-red" />
-          <span className="text-status-red font-bold">Signaling server connection failed.</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-decay" />
+          <span className="text-decay font-bold">Signaling connection failed.</span>
         </div>
         <div>
-          <span>Offline</span>
+          <span className="type-uppercase-label text-fg-muted">offline</span>
         </div>
       </div>
     );
@@ -39,42 +39,42 @@ export const PeerStatus: React.FC = () => {
 
   if (connectedPeers.length === 0) {
     return (
-      <div className="h-8 bg-[#1a1a1a] border-b border-border-default px-4 flex items-center justify-between text-xs font-mono text-text-muted select-none">
+      <div className="h-8 bg-bg-elevated border-b border-border px-4 flex items-center justify-between text-caption font-mono text-fg-muted select-none">
         <div className="flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-status-yellow animate-pulse" />
-          <span>Waiting for peers to join.</span>
+          <span className="w-1.5 h-1.5 rounded-full bg-pulse animate-pulse" />
+          <span>Waiting for peers...</span>
         </div>
         <div>
-          <span>LAN Mode Ready</span>
+          <span className="type-uppercase-label text-fg-muted">lan mode ready</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-8 bg-[#1a1a1a] border-b border-border-default px-4 flex items-center justify-between overflow-x-auto whitespace-nowrap text-xs font-mono text-text-muted scrollbar-none select-none">
+    <div className="h-8 bg-bg-elevated border-b border-border px-4 flex items-center justify-between overflow-x-auto whitespace-nowrap text-caption font-mono text-fg-muted scrollbar-none select-none">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-3">
-          <span className="w-1.5 h-1.5 rounded-full bg-status-green animate-pulse" />
+          <span className="w-1.5 h-1.5 rounded-full bg-photon animate-pulse" />
           <div className="flex items-center gap-3">
             {connectedPeers.map((p) => {
               const handle = p.handle || p.displayName || p.peerId.substring(0, 8);
-              const color = p.peerColor || '#7a7a7a';
+              const color = p.peerColor || 'var(--fg-subtle)';
               return (
                 <div key={p.peerId} className="flex items-center gap-1.5">
                   <span
                     className="w-1.5 h-1.5 rounded-full shrink-0"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="text-text-bright">@{handle}</span>
+                  <span className="text-fg-primary">@{handle}</span>
                   {p.e2eeStatus === 'established' && (
-                    <Lock className="w-3 h-3 text-status-green" title="E2EE Active" />
+                    <span title="E2EE Active"><Lock className="w-3 h-3 text-quantum" /></span>
                   )}
                   {p.e2eeStatus === 'pending' && (
-                    <Lock className="w-3 h-3 text-status-yellow animate-pulse" title="E2EE Negotiating..." />
+                    <span title="E2EE Negotiating..."><Lock className="w-3 h-3 text-pulse animate-pulse" /></span>
                   )}
                   {p.e2eeStatus === 'failed' && (
-                    <ShieldAlert className="w-3 h-3 text-status-red" title="E2EE Failed" />
+                    <span title="E2EE Failed"><ShieldAlert className="w-3 h-3 text-decay" /></span>
                   )}
                 </div>
               );

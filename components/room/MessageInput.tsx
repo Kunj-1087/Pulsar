@@ -7,7 +7,7 @@ import { cn } from '../../lib/utils';
 import { toast } from '../../store/toastStore';
 
 interface MessageInputProps {
-  onSendMessage: (text: string) => void;
+  onSendMessage: (text: string, disappearAfterMs?: number) => void;
   onSendFile: (file: File) => void;
   onTyping: (isTyping: boolean) => void;
   disabled?: boolean;
@@ -36,7 +36,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   // Load draft text on mount/room change, and autofocus input
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedDraft = sessionStorage.getItem(`pulsar_draft_${roomId}`);
+      const savedDraft = sessionStorage.getItem(`quark_draft_${roomId}`);
       if (savedDraft) {
         setText(savedDraft);
       }
@@ -63,7 +63,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     if (val.length <= MAX_CHAR_LIMIT) {
       setText(val);
       if (typeof window !== 'undefined') {
-        sessionStorage.setItem(`pulsar_draft_${roomId}`, val);
+        sessionStorage.setItem(`quark_draft_${roomId}`, val);
       }
       
       if (val === '') {
@@ -101,7 +101,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       onSendMessage(trimmed);
       setText('');
       if (typeof window !== 'undefined') {
-        sessionStorage.removeItem(`pulsar_draft_${roomId}`);
+        sessionStorage.removeItem(`quark_draft_${roomId}`);
       }
       
       // Trigger temporary opacity flash
@@ -183,7 +183,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const showCounter = characterCount >= WARNING_THRESHOLD;
 
   return (
-    <div className="border-t border-border-default bg-bg-primary px-4 py-3 flex flex-col gap-2 relative">
+    <div className="border-t border-border bg-bg-base px-4 py-3 flex flex-col gap-2 relative">
 
       <div className="flex items-end gap-3.5">
         {/* Attachment Button */}
@@ -198,11 +198,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           variant="ghost"
           onClick={triggerFileSelect}
           disabled={disabled}
-          className="w-10 h-10 p-0 rounded-full shrink-0 border border-border-default/80 hover:bg-bg-surface"
+          className="w-10 h-10 p-0 rounded-full shrink-0 border border-border/80 hover:bg-bg-hover"
           title="Attach file (Max 100MB)"
           aria-label="Attach file"
         >
-          <Paperclip className="w-5 h-5 text-text-primary" />
+          <Paperclip className="w-5 h-5 text-fg-primary" />
         </Button>
 
         {/* Text Area Input */}
@@ -215,22 +215,28 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             onKeyDown={handleKeyDown}
             onFocus={() => setIsFocused(true)}
             onBlur={handleBlur}
-            placeholder={disabled ? "Waiting for peers to join..." : "Write a message..."}
+            placeholder={disabled ? "waiting for peers..." : "type a message"}
             disabled={disabled}
             className={cn(
-              "w-full bg-[#1a1a1a] border border-border-default text-text-primary placeholder:text-text-muted font-sans text-[15px] rounded px-3 py-2 resize-none max-h-[120px] focus:outline-none focus:border-text-primary/60 focus:ring-1 focus:ring-text-primary/40 disabled:opacity-50 disabled:cursor-not-allowed leading-normal transition-opacity duration-100",
+              "w-full bg-bg-elevated border border-border text-fg-primary placeholder:text-fg-subtle font-sans text-body rounded px-3 py-2 resize-none max-h-[120px] focus:outline-none focus:border-fg-primary/60 focus:ring-1 focus:ring-fg-primary/40 disabled:opacity-50 disabled:cursor-not-allowed leading-normal transition-opacity duration-100",
               isFlashing && "opacity-60"
             )}
             style={{ height: '40px' }}
           />
+          {/* Terminal cursor blink when empty and focused */}
+          {isFocused && !text && !disabled && (
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-body font-mono text-fg-primary pointer-events-none animate-cursor-blink">
+              █
+            </span>
+          )}
           <span
-            className={cn(
-              "absolute bottom-0 left-0 w-full h-[1px] bg-[#ced0ce]/60 origin-center transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none",
-              isFocused ? "scale-x-100" : "scale-x-0"
-            )}
+              className={cn(
+                "absolute bottom-0 left-0 w-full h-[1px] bg-fg-primary/60 origin-center transition-transform duration-150 ease-standard pointer-events-none",
+                isFocused ? "scale-x-100" : "scale-x-0"
+              )}
           />
           {showCounter && (
-            <span className="absolute bottom-2.5 right-3.5 text-[10px] font-mono text-status-yellow select-none bg-black/60 px-1 rounded">
+            <span className="absolute bottom-2.5 right-3.5 text-micro font-mono text-pulse select-none bg-bg-base/60 px-1 rounded">
               {characterCount} / {MAX_CHAR_LIMIT}
             </span>
           )}
@@ -239,18 +245,17 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         {/* Send Button */}
         <Button
           onClick={handleSend}
-          disabled={disabled || !text.trim()}
-          className={cn(
-            "w-10 h-10 p-0 rounded-full shrink-0 transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] border border-transparent",
-            text.trim()
-              ? "bg-[#e6e8e6] text-[#191919] hover:bg-[#e6e8e6]/90"
-              : "bg-bg-surface text-text-muted border-border-default cursor-not-allowed"
+          disabled={disabled || !text.trim()}              className={cn(
+                "w-10 h-10 p-0 rounded-full shrink-0 transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] border border-transparent",
+                text.trim()
+                  ? "bg-photon text-bg-base hover:bg-photon-hover"
+                  : "bg-bg-surface text-fg-subtle border-border cursor-not-allowed"
           )}
           title="Send message"
           aria-label="Send message"
         >
           <Send
-            className="w-4 h-4 transition-transform duration-150 ease-[cubic-bezier(0.16,1,0.3,1)]"
+            className="w-4 h-4 transition-transform duration-150 ease-standard"
             style={text.trim() ? { transform: 'rotate(15deg)' } : undefined}
           />
         </Button>

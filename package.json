@@ -1,13 +1,42 @@
 {
-  "name": "pulsar",
+  "name": "quark",
   "version": "0.1.0",
+  "description": "Peer-to-peer chat and file sharing. No servers, no accounts, no trace.",
+  "keywords": [
+    "webrtc",
+    "p2p",
+    "chat",
+    "e2ee",
+    "encrypted",
+    "serverless",
+    "pwa",
+    "peer-to-peer"
+  ],
+  "homepage": "https://quark.chat",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kunjnakrani/quark"
+  },
+  "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "signal": "node server.js"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:report": "playwright show-report",
+    "e2e:headed": "playwright test --headed",
+    "security:audit": "npm audit --audit-level=moderate",
+    "signal": "node server.js",
+    "offline": "node scripts/offline-hub.js",
+    "offline:dev": "node scripts/offline-hub.js --dev",
+    "offline:https": "node scripts/offline-hub-https.js"
   },
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
@@ -26,13 +55,25 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.61.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
+    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/ui": "^4.1.10",
+    "concurrently": "^8.2.2",
     "eslint": "^8",
     "eslint-config-next": "14.2.35",
+    "fake-indexeddb": "^6.2.5",
+    "happy-dom": "^20.10.6",
     "postcss": "^8",
+    "qrcode": "^1.5.3",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }

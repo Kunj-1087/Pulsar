@@ -40,7 +40,7 @@ export const RoomCreator: React.FC = () => {
   // Load identity and room code from localStorage / URL
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('pulsar_identity');
+      const saved = localStorage.getItem('quark_identity');
       if (saved) {
         try {
           setIdentity(JSON.parse(saved));
@@ -83,7 +83,7 @@ export const RoomCreator: React.FC = () => {
       }
     } catch (err) {
       console.error(err);
-      setCreateError('Could not initialize room. Check signaling server connection.');
+      setCreateError('Could not initialize room. Check signaling connection.');
     } finally {
       setIsCreating(false);
     }
@@ -98,7 +98,7 @@ export const RoomCreator: React.FC = () => {
     const cleanCode = roomCode.trim().toUpperCase();
 
     if (!isValidRoomCode(cleanCode)) {
-      setJoinError('Invalid room code format (must be 8 alphanumeric chars).');
+      setJoinError('> invalid room code. use 8 alphanumeric characters.');
       setIsJoining(false);
       return;
     }
@@ -107,22 +107,22 @@ export const RoomCreator: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-[440px] px-6 py-8 border border-border-default bg-bg-surface rounded-md">
+    <div className="w-full max-w-[440px] px-6 py-8 border border-border bg-bg-surface rounded-md">
       {/* Wordmark logo */}
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-mono font-bold tracking-tight text-text-bright">
-          PULSAR
+        <h1 className="type-wordmark text-mega text-fg-primary">
+          quark
         </h1>
-        <p className="text-xs font-mono text-text-muted mt-1">
-          Signal travels. No server needed.
+        <p className="type-terminal-msg text-fg-muted mt-2">
+          Chat without the middle.
         </p>
       </div>
 
       <div className="space-y-8">
         {/* Node Identity Display */}
         {identity && (
-          <div className="flex flex-col gap-1.5 p-3.5 bg-bg-primary border border-border-default rounded">
-            <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider select-none">
+          <div className="flex flex-col gap-1.5 p-3.5 bg-bg-base border border-border rounded">
+            <span className="type-uppercase-label text-fg-muted select-none">
               Active Node Identity
             </span>
             <div className="flex items-center gap-2 select-none">
@@ -130,7 +130,7 @@ export const RoomCreator: React.FC = () => {
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: identity.peerColor }}
               />
-              <span className="font-mono text-sm text-[#ced0ce]">
+              <span className="type-peer-name text-fg-primary">
                 @{identity.handle}
               </span>
             </div>
@@ -138,18 +138,18 @@ export const RoomCreator: React.FC = () => {
         )}
 
         {/* Section divider line */}
-        <div className="h-[1px] bg-border-default" />
+        <div className="h-px bg-border" />
 
         {isOffline && (
-          <div className="p-3 bg-status-yellow/10 border border-status-yellow/30 text-status-yellow text-[11px] font-mono rounded select-none text-center">
-            You are offline. Create and join operations require network signaling access.
+          <div className="p-3 bg-pulse/10 border border-pulse/30 text-pulse text-caption font-mono rounded select-none text-center">
+            You are offline. Create and join require network signaling.
           </div>
         )}
 
         {/* Create Room Form */}
         <form onSubmit={handleCreateRoom} className="space-y-3">
-          <h2 className="text-xs font-mono uppercase text-text-muted">
-            Host a New Room
+          <h2 className="type-uppercase-label text-fg-muted">
+            New room
           </h2>
           <Button
             type="submit"
@@ -157,26 +157,26 @@ export const RoomCreator: React.FC = () => {
             loading={isCreating}
             disabled={isJoining || isOffline}
           >
-            Create Room
+            Create room
           </Button>
           {createError && (
-            <p className="text-xs font-mono text-status-red mt-1">{createError}</p>
+            <p className="text-caption font-mono text-decay mt-1">{createError}</p>
           )}
         </form>
 
         {/* Section divider line */}
-        <div className="h-[1px] bg-border-default" />
+        <div className="h-px bg-border" />
 
         {/* Join Room Form */}
         <form onSubmit={handleJoinRoom} className="space-y-3">
-          <h2 className="text-xs font-mono uppercase text-text-muted">
-            Join Existing Room
+          <h2 className="type-uppercase-label text-fg-muted">
+            Join a room
           </h2>
           <div className="flex gap-2">
             <Input
               value={roomCode}
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              placeholder="ROOM CODE"
+              placeholder="6-character code"
               maxLength={8}
               className="font-mono uppercase text-center text-lg tracking-wider"
               disabled={isJoining || isCreating || isOffline}
@@ -192,14 +192,13 @@ export const RoomCreator: React.FC = () => {
             </Button>
           </div>
           {joinError && (
-            <p className="text-xs font-mono text-status-red mt-1">{joinError}</p>
+            <p className="text-caption font-mono text-decay mt-1">{joinError}</p>
           )}
         </form>
       </div>
 
-      {/* Footer info */}
-      <div className="mt-8 text-center text-[10px] font-mono text-text-muted">
-        <p>Open Source • P2P WebRTC • Local Encrypted Session</p>
+      {/* Footer info */}        <div className="mt-8 text-center type-micro text-fg-subtle">
+        <p>P2P WebRTC • E2EE • No servers</p>
       </div>
     </div>
   );

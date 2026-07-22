@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { cn } from '../../lib/utils';
+import { cn, migrateLegacyStorage, cleanupLegacyDatabase } from '../../lib/utils';
 
 interface IdentityGateProps {
   children: React.ReactNode;
@@ -30,10 +30,16 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
   const [elementsVisible, setElementsVisible] = useState(false);
   const [fadeState, setFadeState] = useState<'idle' | 'fade-out' | 'blackout' | 'fade-in'>('idle');
 
+  // Run legacy migration and cleanup on first load
+  useEffect(() => {
+    migrateLegacyStorage();
+    cleanupLegacyDatabase();
+  }, []);
+
   // Check localStorage on mount
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('pulsar_identity');
+      const saved = localStorage.getItem('quark_identity');
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
@@ -52,33 +58,50 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
   useEffect(() => {
     if (checking || identity) return;
 
-    const fullText = "PULSAR NETWORK — NODE INITIALIZATION";
-    let textIdx = 0;
+    const bootLines = [
+      '> quark v1.0.0',
+      '> initializing peer node',
+      "> no accounts. no servers. no trace.",
+      '> ',
+    ];
+    let currentLine = 0;
+    let charIdx = 0;
+    let activeInterval: NodeJS.Timeout | null = null;
     let cursorTimer: NodeJS.Timeout | null = null;
     let elementsTimer: NodeJS.Timeout | null = null;
     
-    const interval = setInterval(() => {
-      setTypedText(fullText.substring(0, textIdx + 1));
-      textIdx++;
-      
-      if (textIdx >= fullText.length) {
-        clearInterval(interval);
-        
-        // Show blinking block cursor for 800ms
+    const typeLine = () => {
+      if (currentLine >= bootLines.length) {
         setShowCursor(true);
         cursorTimer = setTimeout(() => {
           setShowCursor(false);
-          
-          // Wait 600ms to fade in remaining elements
           elementsTimer = setTimeout(() => {
             setElementsVisible(true);
           }, 600);
         }, 800);
+        return;
       }
-    }, 40);
+      
+      const line = bootLines[currentLine];
+      activeInterval = setInterval(() => {
+        charIdx++;
+        const prefix = bootLines.slice(0, currentLine).join('\n');
+        const currentText = prefix + (prefix ? '\n' : '') + line.substring(0, charIdx);
+        setTypedText(currentText);
+        
+        if (charIdx >= line.length) {
+          if (activeInterval) clearInterval(activeInterval);
+          charIdx = 0;
+          currentLine++;
+          setTimeout(typeLine, 120);
+        }
+      }, 12);
+    };
+    
+    typeLine();
 
     return () => {
-      clearInterval(interval);
+      if (activeInterval) clearInterval(activeInterval);
       if (cursorTimer) clearTimeout(cursorTimer);
       if (elementsTimer) clearTimeout(elementsTimer);
     };
@@ -114,7 +137,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
     if (isInitializing) return;
 
     if (handle.length < 3) {
-      setErrorMsg("Handle must be at least 3 characters.");
+      setErrorMsg("> invalid: use letters, numbers, hyphen, underscore, period. max 20 characters.");
       return;
     }
 
@@ -141,8 +164,8 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
         createdAt: Date.now(),
       };
       
-      localStorage.setItem('pulsar_identity', JSON.stringify(newIdentity));
-      localStorage.setItem('pulsar-displayName', handle); // backwards compatibility fallback
+      localStorage.setItem('quark_identity', JSON.stringify(newIdentity));
+      localStorage.setItem('quark-displayName', handle); // backwards compatibility fallback
 
       // Full-screen transition sequence
       setFadeState('fade-out');
@@ -165,8 +188,8 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
   // Skip rendering identity gate if identity exists on initial load
   if (checking) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#191919] flex items-center justify-center font-mono text-xs text-text-muted select-none">
-        Loading...
+      <div className="fixed inset-0 z-50 bg-bg-base flex items-center justify-center font-mono text-caption text-fg-muted select-none">
+        <span>loading<span className="animate-cursor-blink ml-0.5">_</span></span>
       </div>
     );
   }
@@ -184,69 +207,58 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
       {showIdentityScreen && (
         <div
           className={cn(
-            "fixed inset-0 z-40 bg-[#191919] flex flex-col items-center justify-center p-4 select-none",
+            "fixed inset-0 z-40 bg-bg-base flex flex-col items-center justify-center p-4 select-none",
             fadeState === 'fade-out' ? "opacity-0 transition-opacity duration-300 ease-[cubic-bezier(0.4,0,1,1)]" : "opacity-100"
           )}
         >
           <div className="w-full max-w-[480px] flex flex-col items-stretch text-left font-mono">
-            {/* Top boot sequence animated line */}
-            <div className="text-[11px] text-text-muted uppercase tracking-[0.15em] font-medium h-5">
+            {/* Top boot sequence animated lines */}
+            <div className="type-terminal-msg text-fg-muted whitespace-pre-wrap min-h-[5rem]">
               {typedText}
-              {showCursor && <span className="animate-[pulsar-cursor-blink_1s_infinite_steps(2,start)]">█</span>}
+              {showCursor && <span className="animate-cursor-blink">█</span>}
             </div>
 
             {/* Fade-in elements staggered via delay styles */}
             <div className="mt-8 flex flex-col gap-6">
-              {/* Element 1: Header */}
-              <h2
+              {/* Element 1: Handle prompt */}
+              <div
                 className={cn(
-                  "font-mono font-bold text-2xl text-[#e6e8e6] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                  "type-terminal-msg text-fg-muted transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
                   elementsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
                 )}
                 style={{ transitionDelay: '0ms' }}
               >
-                Choose your handle
-              </h2>
+                {'>'} handle:
+              </div>
 
-              {/* Element 2: Description */}
-              <p
-                className={cn(
-                  "font-sans text-[13px] text-text-muted leading-relaxed transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
-                  elementsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-                )}
-                style={{ transitionDelay: '150ms' }}
-              >
-                This is how others will see you. Pick something you like — you can&apos;t change it mid-session.
-              </p>
-
-              {/* Element 3: Input Field */}
+              {/* Element 2: Input Field */}
               <div
                 className={cn(
                   "transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
                   elementsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
                 )}
-                style={{ transitionDelay: '300ms' }}
+                style={{ transitionDelay: '120ms' }}
               >
                 <form onSubmit={handleSubmit} className="w-full flex flex-col">
                   <div
                     className={cn(
                       "flex items-center w-full border-b pb-1.5 transition-colors duration-150 relative",
                       borderFlashRed
-                        ? "border-status-red"
+                        ? "border-decay"
                         : isFocused
-                        ? "border-[#ced0ce]"
-                        : "border-[#2e2e2e]"
+                        ? "border-fg-primary"
+                        : "border-border"
                     )}
                   >
-                    <span className="text-xl text-text-muted select-none mr-2 font-mono">@</span>
+                    <span className="type-terminal-prefix select-none mr-2">@</span>
                     <input
                       type="text"
                       value={handle}
                       onChange={handleInputChange}
                       onFocus={() => setIsFocused(true)}
                       onBlur={() => setIsFocused(false)}
-                      placeholder="your_handle_42"
-                      className="flex-1 bg-transparent text-xl font-mono text-[#e6e8e6] placeholder:text-text-muted focus:outline-none caret-[#ced0ce] select-text"
+                      placeholder=""
+                      className="flex-1 bg-transparent text-h4 font-mono text-fg-primary placeholder:text-fg-subtle focus:outline-none caret-fg-primary select-text"
                       disabled={isInitializing}
                       autoFocus
                     />
@@ -254,12 +266,12 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                     {/* Counter updates colors dynamically */}
                     <span
                       className={cn(
-                        "text-[11px] font-sans transition-colors duration-150 select-none ml-2",
+                        "text-caption font-sans transition-colors duration-150 select-none ml-2",
                         handle.length >= 20
-                          ? "text-[#ced0ce]"
+                          ? "text-fg-primary"
                           : handle.length >= 18
-                          ? "text-[#f0ad4e]" // Warning amber
-                          : "text-text-muted"
+                          ? "text-pulse"
+                          : "text-fg-muted"
                       )}
                     >
                       {handle.length} / 20
@@ -269,7 +281,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                   {/* Inline error description */}
                   <div className="h-6 mt-2 overflow-hidden relative">
                     {errorMsg && (
-                      <p className="text-xs font-sans text-[#ef5350]/80 transition-opacity duration-150 opacity-100 animate-[pulsar-message-in-system_150ms_ease-in_forwards]">
+                      <p className="text-small font-mono text-decay/80 transition-opacity duration-150 opacity-100 quark-animate-system">
                         {errorMsg}
                       </p>
                     )}
@@ -277,41 +289,41 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                 </form>
               </div>
 
-              {/* Element 4: Submit Button */}
+              {/* Element 3: Submit Button */}
               <div
                 className={cn(
                   "transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
                   elementsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
                 )}
-                style={{ transitionDelay: '450ms' }}
+                style={{ transitionDelay: '240ms' }}
               >
                 <button
                   type="submit"
                   onClick={handleSubmit}
                   disabled={isButtonDisabled}
                   className={cn(
-                    "w-full h-11 bg-[#ced0ce] text-[#191919] font-mono text-sm rounded flex items-center justify-center gap-2 transition-all duration-150 select-none border border-transparent",
+                    "w-full h-11 bg-fg-primary text-bg-base font-mono text-sm tracking-wide rounded flex items-center justify-center gap-2 transition-all duration-150 select-none border border-transparent",
                     isButtonDisabled
                       ? "opacity-40 cursor-not-allowed"
-                      : "hover:bg-[#e6e8e6] active:scale-[0.98]"
+                      : "hover:bg-fg-secondary active:scale-[0.98]"
                   )}
                 >
                   {isInitializing && (
-                    <span className="w-3.5 h-3.5 border-2 border-[#191919]/30 border-t-[#191919] rounded-full animate-spin shrink-0" />
+                    <span className="w-3.5 h-3.5 border-2 border-bg-base/30 border-t-bg-base rounded-full animate-spin shrink-0" />
                   )}
-                  <span>{isInitializing ? "Initializing..." : "Initialize node →"}</span>
+                  <span>                  {isInitializing ? "initializing..." : "continue →"}</span>
                 </button>
               </div>
 
-              {/* Element 5: Stored Locally Muted Subline */}
+              {/* Element 4: Stored Locally Muted Subline */}
               <div
                 className={cn(
                   "text-center mt-8 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
                   elementsVisible ? "opacity-50 translate-y-0" : "opacity-0 translate-y-2"
                 )}
-                style={{ transitionDelay: '600ms' }}
+                style={{ transitionDelay: '360ms' }}
               >
-                <p className="text-[11px] font-sans text-text-muted select-none">
+                <p className="type-micro text-fg-muted select-none">
                   Stored locally. Never sent to any server.
                 </p>
               </div>
@@ -334,7 +346,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
 
       {/* Transition cover */}
       {fadeState === 'blackout' && (
-        <div className="fixed inset-0 z-50 bg-black" />
+        <div className="fixed inset-0 z-50 bg-bg-base" />
       )}
     </div>
   );

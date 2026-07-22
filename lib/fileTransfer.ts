@@ -12,20 +12,21 @@ export interface BinaryFrame {
 /**
  * Encodes a chunk data payload into a binary frame with a 47-byte header.
  * Byte Layout:
- * - Bytes 0-1 (2 bytes): Magic byte 0x50 ('P') and Version byte 0x01
+ * - Bytes 0-1 (2 bytes): Magic byte 0x51 ('Q') and Version byte 0x01
  * - Byte 2 (1 byte): Frame-type byte (0x00 = Chunk Data)
  * - Bytes 3-38 (36 bytes): Transfer ID (ASCII string of UUID, null-padded)
  * - Bytes 39-42 (4 bytes): Chunk Index (32-bit big-endian unsigned integer)
  * - Bytes 43-46 (4 bytes): Chunk Length (32-bit big-endian unsigned integer)
  * - Bytes 47+: Raw chunk bytes
  */
-export function encodeBinaryFrame(transferId: string, chunkIndex: number, chunkData: ArrayBuffer): ArrayBuffer {
+export function encodeBinaryFrame(transferId: string, chunkIndex: number, chunkData: ArrayBuffer | Uint8Array): ArrayBuffer {
   const transferIdBytes = new TextEncoder().encode(transferId);
-  const headerBuffer = new ArrayBuffer(HEADER_SIZE + chunkData.byteLength);
+  const chunkByteLength = chunkData.byteLength;
+  const headerBuffer = new ArrayBuffer(HEADER_SIZE + chunkByteLength);
   const headerView = new DataView(headerBuffer);
   const uint8View = new Uint8Array(headerBuffer);
 
-  headerView.setUint8(0, 0x50); // Magic 'P'
+  headerView.setUint8(0, 0x51); // Magic 'Q'
   headerView.setUint8(1, 0x01); // Version 1
   headerView.setUint8(2, 0x00); // Frame-type (Chunk Data)
 
@@ -34,9 +35,10 @@ export function encodeBinaryFrame(transferId: string, chunkIndex: number, chunkD
   uint8View.set(transferIdBytes.subarray(0, writeLen), 3);
 
   headerView.setUint32(39, chunkIndex, false); // Big-endian
-  headerView.setUint32(43, chunkData.byteLength, false); // Big-endian
+  headerView.setUint32(43, chunkByteLength, false); // Big-endian
 
-  uint8View.set(new Uint8Array(chunkData), HEADER_SIZE);
+  const payloadBytes = chunkData instanceof Uint8Array ? chunkData : new Uint8Array(chunkData);
+  uint8View.set(payloadBytes, HEADER_SIZE);
   return headerBuffer;
 }
 
@@ -45,7 +47,7 @@ export function encodeBinaryFrame(transferId: string, chunkIndex: number, chunkD
  */
 export function decodeBinaryFrame(arrayBuffer: ArrayBuffer): BinaryFrame {
   if (arrayBuffer.byteLength < HEADER_SIZE) {
-    throw new Error('[Pulsar FileTransfer] Binary frame is too small');
+    throw new Error('[Quark FileTransfer] Binary frame is too small');
   }
 
   const view = new DataView(arrayBuffer);
@@ -53,11 +55,11 @@ export function decodeBinaryFrame(arrayBuffer: ArrayBuffer): BinaryFrame {
   const version = view.getUint8(1);
   const type = view.getUint8(2);
 
-  if (magic !== 0x50 || version !== 0x01) {
-    throw new Error(`[Pulsar FileTransfer] Invalid magic (0x${magic.toString(16)}) or version (${version})`);
+  if (magic !== 0x51 || version !== 0x01) {
+    throw new Error(`[Quark FileTransfer] Invalid magic (0x${magic.toString(16)}) or version (${version})`);
   }
   if (type !== 0x00) {
-    throw new Error(`[Pulsar FileTransfer] Unsupported frame type: 0x${type.toString(16)}`);
+    throw new Error(`[Quark FileTransfer] Unsupported frame type: 0x${type.toString(16)}`);
   }
 
   // Extract transferId (bytes 3 to 38)
@@ -73,7 +75,7 @@ export function decodeBinaryFrame(arrayBuffer: ArrayBuffer): BinaryFrame {
   const chunkLength = view.getUint32(43, false); // Big-endian
 
   if (HEADER_SIZE + chunkLength !== arrayBuffer.byteLength) {
-    throw new Error(`[Pulsar FileTransfer] Frame payload size mismatch. Expected ${chunkLength}, buffer has ${arrayBuffer.byteLength - HEADER_SIZE}`);
+    throw new Error(`[Quark FileTransfer] Frame payload size mismatch. Expected ${chunkLength}, buffer has ${arrayBuffer.byteLength - HEADER_SIZE}`);
   }
 
   // Slice a view over the existing buffer to prevent memory duplication
@@ -89,7 +91,7 @@ export function encodeEncryptedControlFrame(iv: Uint8Array, ciphertext: Uint8Arr
   const view = new DataView(buffer);
   const uint8 = new Uint8Array(buffer);
 
-  view.setUint8(0, 0x50); // 'P'
+  view.setUint8(0, 0x51); // 'Q'
   view.setUint8(1, 0x01); // Version 1
   view.setUint8(2, 0x01); // Type 0x01: Encrypted control message
 
@@ -103,7 +105,7 @@ export function encodeEncryptedControlFrame(iv: Uint8Array, ciphertext: Uint8Arr
  */
 export function decodeEncryptedControlFrame(buffer: ArrayBuffer): { iv: Uint8Array; ciphertext: Uint8Array } {
   if (buffer.byteLength < 15) {
-    throw new Error('[Pulsar FileTransfer] Encrypted control frame too small');
+    throw new Error('[Quark FileTransfer] Encrypted control frame too small');
   }
   const iv = new Uint8Array(buffer, 3, 12);
   const ciphertext = new Uint8Array(buffer, 15, buffer.byteLength - 15);
@@ -125,7 +127,7 @@ export function encodeEncryptedFileFrame(
   const view = new DataView(buffer);
   const uint8 = new Uint8Array(buffer);
 
-  view.setUint8(0, 0x50); // 'P'
+  view.setUint8(0, 0x51); // 'Q'
   view.setUint8(1, 0x01); // Version 1
   view.setUint8(2, 0x02); // Type 0x02: Encrypted file chunk
 
@@ -152,7 +154,7 @@ export function decodeEncryptedFileFrame(buffer: ArrayBuffer): {
   ciphertext: Uint8Array;
 } {
   if (buffer.byteLength < 59) {
-    throw new Error('[Pulsar FileTransfer] Encrypted file frame too small');
+    throw new Error('[Quark FileTransfer] Encrypted file frame too small');
   }
   const view = new DataView(buffer);
   const transferIdBytes = new Uint8Array(buffer, 3, 36);
@@ -191,7 +193,7 @@ export async function sendFile(
   const CHUNK_SIZE = Math.min(Math.max(rawChunkSize, CLAMP_MIN), CLAMP_MAX);
 
   if (rawChunkSize < CLAMP_MIN || rawChunkSize > CLAMP_MAX) {
-    console.warn(`[Pulsar FileTransfer] Configured chunk size ${rawChunkSize} is out of safe bounds. Clamped to ${CHUNK_SIZE}.`);
+    console.warn(`[Quark FileTransfer] Configured chunk size ${rawChunkSize} is out of safe bounds. Clamped to ${CHUNK_SIZE}.`);
   }
 
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
@@ -255,7 +257,7 @@ export async function sendFile(
       channel.send(frame);
       onProgress(Math.round(((chunkIndex + 1) / totalChunks) * 100));
     } catch (err) {
-      console.error(`[Pulsar FileTransfer] Error sending chunk ${chunkIndex} of file ${file.name}:`, err);
+      console.error(`[Quark FileTransfer] Error sending chunk ${chunkIndex} of file ${file.name}:`, err);
       throw err;
     }
   }
@@ -321,9 +323,9 @@ export class FileReceiver {
   assemble(): Blob {
     for (let i = 0; i < this.totalChunks; i++) {
       if (this.chunks[i] === undefined) {
-        throw new Error(`[Pulsar FileTransfer] Cannot assemble: missing chunk index ${i}`);
+        throw new Error(`[Quark FileTransfer] Cannot assemble: missing chunk index ${i}`);
       }
     }
-    return new Blob(this.chunks, { type: this.mimeType });
+    return new Blob(this.chunks as BlobPart[], { type: this.mimeType });
   }
 }

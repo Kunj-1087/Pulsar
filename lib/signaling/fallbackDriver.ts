@@ -1,13 +1,14 @@
-import { PulsarSignaling } from '../signaling';
+import { QuarkSignaling } from '../signaling';
 import { AblySignaling } from './ablyDriver';
 import { SignalingMessage } from '../../types';
 import { toast } from '../../store/toastStore';
+import { isOfflineMode } from '../utils';
 
 type MessageHandler = (msg: SignalingMessage) => void;
 type StateChangeHandler = (state: 'connected' | 'disconnected' | 'reconnecting' | 'failed') => void;
 
 export class FallbackSignalingDriver {
-  private primary: PulsarSignaling;
+  private primary: QuarkSignaling;
   private fallback: AblySignaling | null = null;
   private activeDriver: 'primary' | 'fallback' | null = null;
 
@@ -19,11 +20,19 @@ export class FallbackSignalingDriver {
 
   constructor(peerId: string) {
     this.peerId = peerId;
-    this.primary = new PulsarSignaling(peerId);
+    this.primary = new QuarkSignaling(peerId);
     
+    // In offline mode, do not initialize Ably fallback at all.
+    // In online mode, only initialize Ably if it is explicitly enabled.
+    const isOffline = isOfflineMode();
     const ablyEnabled = process.env.NEXT_PUBLIC_ENABLE_ABLY_FALLBACK !== 'false';
-    if (ablyEnabled) {
+    
+    if (!isOffline && ablyEnabled) {
       this.fallback = new AblySignaling(peerId);
+    }
+    
+    if (isOffline) {
+      console.log('[Signaling Fallback] Offline mode detected. Ably fallback disabled.');
     }
   }
 
@@ -32,7 +41,9 @@ export class FallbackSignalingDriver {
     this.isConnecting = true;
 
     const timeoutMs = Number(process.env.NEXT_PUBLIC_SIGNALING_TIMEOUT_MS) || 5000;
-    console.log(`[Signaling Fallback] Attempting primary signaling with ${timeoutMs}ms timeout...`);
+    const isOffline = isOfflineMode();
+    
+    console.log(`[Signaling Fallback] Attempting primary signaling with ${timeoutMs}ms timeout${isOffline ? ' (offline mode)' : ''}...`);
 
     // Setup primary handlers in case it succeeds
     this.primary.onMessage((msg) => this.messageHandler?.(msg));
@@ -54,14 +65,24 @@ export class FallbackSignalingDriver {
     } catch (err) {
       console.warn('[Signaling Fallback] Primary signaling failed:', err);
       
-      // Attempt Ably fallback
-      if (this.fallback) {
+      // Attempt Ably fallback only if offline mode is OFF
+      if (!isOffline && this.fallback) {
         toast.info('Primary signaling server unreachable. Switching to backup server...', { title: 'Network Failover' });
         await this.switchToFallback();
       } else {
         this.isConnecting = false;
+        
+        if (isOffline) {
+          // In offline mode, give a specific error message about LAN connectivity
+          const errorMsg = 'Cannot reach the LAN signaling server. Make sure you are on the same network as the hub.';
+          console.error('[Signaling Fallback]', errorMsg);
+          toast.error(errorMsg, { title: 'Offline Mode - No Connection' });
+        } else {
+          toast.error('Primary signaling failed and backup is not enabled.', { title: 'Signaling Error' });
+        }
+        
         this.stateChangeHandler?.('failed');
-        throw new Error('Primary signaling failed and backup is not enabled');
+        throw new Error(isOffline ? 'Offline mode: LAN signaling server unreachable' : 'Primary signaling failed and backup is not enabled');
       }
     }
   }

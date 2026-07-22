@@ -24,12 +24,13 @@
  *   local history. This is intentional for usability.
  */
 
-// Static public salt for HKDF key derivation (32 bytes)
+export const CRYPTO_PROTOCOL_VERSION = 1;
+
 const HKDF_SALT = new Uint8Array([
-  0x70, 0x75, 0x6c, 0x73, 0x61, 0x72, 0x2d, 0x65,
-  0x32, 0x65, 0x65, 0x2d, 0x73, 0x61, 0x6c, 0x74,
-  0x2d, 0x76, 0x31, 0x2d, 0x73, 0x74, 0x61, 0x74,
-  0x69, 0x63, 0x2d, 0x76, 0x61, 0x6c, 0x75, 0x65
+  0x71, 0x75, 0x61, 0x72, 0x6b, 0x2d, 0x65, 0x32,
+  0x65, 0x65, 0x2d, 0x73, 0x61, 0x6c, 0x74, 0x2d,
+  0x73, 0x74, 0x61, 0x74, 0x69, 0x63, 0x2d, 0x76,
+  0x61, 0x6c, 0x75, 0x65, 0x00, 0x00, 0x00, 0x00
 ]);
 
 /**
@@ -78,9 +79,9 @@ export async function deriveAESGCMKey(
   remotePublicKey: CryptoKey,
   peerId1: string,
   peerId2: string,
-  roomId: string
+  roomId: string,
+  roomPassword?: string
 ): Promise<CryptoKey> {
-  // Step 1: Derive the shared secret master key from ECDH key agreement
   const masterSecret = await crypto.subtle.deriveKey(
     {
       name: 'ECDH',
@@ -90,13 +91,17 @@ export async function deriveAESGCMKey(
     {
       name: 'HKDF',
     },
-    false, // Non-extractable
+    false,
     ['deriveKey']
   );
 
-  // Step 2: Bind the context to prevent key reuse across protocols / sessions
   const sortedPeers = [peerId1, peerId2].sort();
-  const infoString = `pulsar-e2ee-v1:${sortedPeers[0]}:${sortedPeers[1]}:${roomId}`;
+  let infoString = `quark-e2ee-v${CRYPTO_PROTOCOL_VERSION}:${sortedPeers[0]}:${sortedPeers[1]}:${roomId}`;
+  if (roomPassword) {
+    const pwHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(roomPassword));
+    const pwHex = Array.from(new Uint8Array(pwHash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    infoString += `:pwd=${pwHex}`;
+  }
   const infoBytes = new TextEncoder().encode(infoString);
 
   // Step 3: Derive final AES-GCM 256-bit key using HKDF (SHA-256)
@@ -154,10 +159,10 @@ export async function decryptMessage(
   const decryptedBuffer = await crypto.subtle.decrypt(
     {
       name: 'AES-GCM',
-      iv,
+      iv: iv as BufferSource,
     },
     key,
-    ciphertext
+    ciphertext as BufferSource
   );
 
   return new TextDecoder().decode(decryptedBuffer);
@@ -176,7 +181,7 @@ export async function encryptChunk(
   const ciphertextBuffer = await crypto.subtle.encrypt(
     {
       name: 'AES-GCM',
-      iv,
+      iv: iv as BufferSource,
     },
     key,
     chunk
@@ -199,10 +204,10 @@ export async function decryptChunk(
   const decryptedBuffer = await crypto.subtle.decrypt(
     {
       name: 'AES-GCM',
-      iv,
+      iv: iv as BufferSource,
     },
     key,
-    ciphertext
+    ciphertext as BufferSource
   );
 
   return new Uint8Array(decryptedBuffer);
