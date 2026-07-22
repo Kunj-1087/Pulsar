@@ -11,7 +11,7 @@ export const PeerStatus: React.FC = () => {
 
   if (roomStatus === 'reconnecting') {
     return (
-      <div className="h-8 bg-surface-elevated border-b border-dim px-4 flex items-center justify-between text-caption font-mono text-fg-muted select-none">
+      <div className="w-full min-h-8 rounded-full border border-border/60 bg-bg-surface/70 px-4 py-1.5 flex items-center justify-between text-caption font-mono text-fg-muted select-none shadow-[0_2px_10px_rgba(0,0,0,0.12)] backdrop-blur-[1px]">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-accretion animate-pulse" />
           <span className="text-accretion font-bold">Signaling lost. Reconnecting...</span>
@@ -25,7 +25,7 @@ export const PeerStatus: React.FC = () => {
 
   if (roomStatus === 'failed') {
     return (
-      <div className="h-8 bg-surface-elevated border-b border-dim px-4 flex items-center justify-between text-caption font-mono text-fg-muted select-none">
+      <div className="w-full min-h-8 rounded-full border border-border/60 bg-bg-surface/70 px-4 py-1.5 flex items-center justify-between text-caption font-mono text-fg-muted select-none shadow-[0_2px_10px_rgba(0,0,0,0.12)] backdrop-blur-[1px]">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-redshift" />
           <span className="text-redshift font-bold">Signaling connection failed.</span>
@@ -39,7 +39,7 @@ export const PeerStatus: React.FC = () => {
 
   if (connectedPeers.length === 0) {
     return (
-      <div className="h-8 bg-surface-elevated border-b border-dim px-4 flex items-center justify-between text-caption font-mono text-fg-muted select-none">
+      <div className="w-full min-h-8 rounded-full border border-border/60 bg-bg-surface/70 px-4 py-1.5 flex items-center justify-between text-caption font-mono text-fg-muted select-none shadow-[0_2px_10px_rgba(0,0,0,0.12)] backdrop-blur-[1px]">
         <div className="flex items-center gap-2">
           <span className="w-1.5 h-1.5 rounded-full bg-accretion animate-pulse" />
           <span>Waiting for peers...</span>
@@ -52,7 +52,7 @@ export const PeerStatus: React.FC = () => {
   }
 
   return (
-    <div className="h-8 bg-surface-elevated border-b border-dim px-4 flex items-center justify-between overflow-x-auto whitespace-nowrap text-caption font-mono text-fg-muted scrollbar-none select-none">
+    <div className="w-full min-h-8 rounded-full border border-border/60 bg-bg-surface/70 px-4 py-1.5 flex items-center justify-between overflow-x-auto whitespace-nowrap text-caption font-mono text-fg-muted scrollbar-none select-none shadow-[0_2px_10px_rgba(0,0,0,0.12)] backdrop-blur-[1px]">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-3">
           <span className="w-1.5 h-1.5 rounded-full bg-nebula animate-pulse" />

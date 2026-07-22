@@ -1100,7 +1100,9 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         )}
       >
         <RoomHeader roomId={roomId} />
-        <PeerStatus />
+        <div className="px-3 pt-2 pb-1">
+          <PeerStatus />
+        </div>
 
         {allPeersFailedICE && (
           <div className="bg-decay/10 border-b border-decay/30 px-4 py-2 flex items-center justify-between text-xs font-mono text-decay select-none">

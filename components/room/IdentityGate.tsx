@@ -202,28 +202,28 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
   const isButtonDisabled = handle.length === 0 || isInputInvalid || isInitializing;
 
   return (
-    <div className="relative w-full h-full min-h-screen bg-void">
+    <div className="relative w-full min-h-[100dvh] bg-void">
       {/* Identity creation screen */}
       {showIdentityScreen && (
         <div
           className={cn(
-            "fixed inset-0 z-40 bg-void flex flex-col items-center justify-center p-4 select-none",
+            "fixed inset-0 z-40 bg-void flex flex-col items-center justify-center p-6 sm:p-8 select-none",
             fadeState === 'fade-out' ? "opacity-0 transition-opacity duration-300 ease-[cubic-bezier(0.4,0,1,1)]" : "opacity-100"
           )}
         >
-          <div className="w-full max-w-[480px] flex flex-col items-stretch text-left font-mono">
+          <div className="w-full max-w-[480px] flex flex-col items-center text-center font-mono">
             {/* Top boot sequence animated lines */}
-            <div className="type-terminal-msg text-fg-secondary whitespace-pre-wrap min-h-[5rem]">
+            <div className="type-terminal-msg text-fg-secondary whitespace-pre-wrap min-h-[6rem] text-sm sm:text-base text-center">
               {typedText}
               {showCursor && <span className="animate-cursor-blink text-pulsar">█</span>}
             </div>
 
             {/* Fade-in elements staggered via delay styles */}
-            <div className="mt-8 flex flex-col gap-6">
+            <div className="mt-6 flex flex-col gap-5">
               {/* Element 1: Handle prompt */}
               <div
                 className={cn(
-                  "type-terminal-msg text-fg-secondary transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                  "type-terminal-msg text-fg-secondary text-sm sm:text-base transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] text-center",
                   elementsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
                 )}
                 style={{ transitionDelay: '0ms' }}
@@ -239,18 +239,18 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                 )}
                 style={{ transitionDelay: '120ms' }}
               >
-                <form onSubmit={handleSubmit} className="w-full flex flex-col">
+                <form onSubmit={handleSubmit} className="w-full flex flex-col items-center">
                   <div
                     className={cn(
-                      "flex items-center w-full border-b pb-1.5 transition-colors duration-150 relative",
+                      "flex items-center w-full rounded-md border bg-surface/40 px-3 py-3 transition-colors duration-150 relative",
                       borderFlashRed
                         ? "border-redshift"
                         : isFocused
-                        ? "border-pulsar"
+                        ? "border-pulsar shadow-[0_0_0_1px_rgba(76,201,240,0.4)]"
                         : "border-dim"
                     )}
                   >
-                    <span className="type-terminal-prefix select-none mr-2 text-pulsar">@</span>
+                    <span className="type-terminal-prefix select-none mr-2 text-pulsar text-sm sm:text-base">@</span>
                     <input
                       type="text"
                       value={handle}
@@ -258,7 +258,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                       onFocus={() => setIsFocused(true)}
                       onBlur={() => setIsFocused(false)}
                       placeholder=""
-                      className="flex-1 bg-transparent text-h4 font-mono text-fg-primary placeholder:text-fg-subtle focus:outline-none caret-pulsar select-text"
+                      className="flex-1 bg-transparent text-base sm:text-lg font-mono text-fg-primary placeholder:text-fg-subtle focus:outline-none caret-pulsar select-text"
                       disabled={isInitializing}
                       autoFocus
                     />
@@ -266,7 +266,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                     {/* Counter updates colors dynamically */}
                     <span
                       className={cn(
-                        "text-caption font-sans transition-colors duration-150 select-none ml-2",
+                        "text-xs font-sans transition-colors duration-150 select-none ml-2",
                         handle.length >= 20
                           ? "text-fg-primary"
                           : handle.length >= 18
@@ -279,9 +279,9 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                   </div>
 
                   {/* Inline error description */}
-                  <div className="h-6 mt-2 overflow-hidden relative">
+                  <div className="h-5 mt-2 overflow-hidden relative">
                     {errorMsg && (
-                      <p className="text-small font-mono text-redshift transition-opacity duration-150 opacity-100 quark-animate-system">
+                      <p className="text-xs font-mono text-redshift transition-opacity duration-150 opacity-100 quark-animate-system">
                         {errorMsg}
                       </p>
                     )}
@@ -302,7 +302,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                   onClick={handleSubmit}
                   disabled={isButtonDisabled}
                   className={cn(
-                    "w-full h-11 bg-fg-primary text-bg-base font-mono text-sm tracking-wide rounded flex items-center justify-center gap-2 transition-all duration-150 select-none border border-transparent",
+                    "w-full h-12 bg-fg-primary text-bg-base font-mono text-sm sm:text-base tracking-wide rounded-md flex items-center justify-center gap-2 transition-all duration-150 select-none border border-transparent",
                     isButtonDisabled
                       ? "opacity-40 cursor-not-allowed"
                       : "hover:bg-fg-secondary active:scale-[0.98]"
@@ -323,7 +323,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                 )}
                 style={{ transitionDelay: '360ms' }}
               >
-                <p className="type-micro text-fg-muted select-none">
+                <p className="text-xs text-fg-muted select-none">
                   Stored locally. Never sent to any server.
                 </p>
               </div>
@@ -336,7 +336,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
       {showChildren && (
         <div
           className={cn(
-            "w-full h-full transition-opacity duration-300",
+            "w-full flex flex-col items-center justify-center transition-opacity duration-300 py-6",
             (fadeState === 'idle' || fadeState === 'fade-in') ? "opacity-100" : "opacity-0"
           )}
         >

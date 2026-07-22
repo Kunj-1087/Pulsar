@@ -98,7 +98,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
 
   return (
     <>
-      <header className="h-13 border-b border-border bg-bg-base px-4 flex items-center justify-between select-none">
+      <header className="h-13 bg-bg-base px-4 flex items-center justify-between select-none">
         {/* Left: Wordmark */}
         <div className="flex items-center gap-2">
           <span className="type-wordmark text-sm text-fg-primary group cursor-default">

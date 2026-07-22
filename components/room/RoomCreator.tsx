@@ -107,21 +107,21 @@ export const RoomCreator: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-[440px] px-6 py-8 border border-dim bg-surface rounded-md shadow-2xl">
+    <div className="w-full max-w-[440px] px-4 py-6 sm:px-6 sm:py-8 border border-dim bg-surface rounded-lg shadow-2xl">
       {/* Wordmark logo */}
-      <div className="text-center mb-8">
-        <h1 className="type-wordmark text-mega text-pulsar drop-shadow-[0_0_24px_rgba(76,201,240,0.25)]">
+      <div className="text-center mb-6 sm:mb-8">
+        <h1 className="type-wordmark text-4xl sm:text-5xl text-pulsar drop-shadow-[0_0_24px_rgba(76,201,240,0.25)]">
           quark
         </h1>
-        <p className="type-terminal-msg text-fg-secondary mt-2">
+        <p className="type-terminal-msg text-fg-secondary mt-2 text-sm sm:text-base">
           Chat without the middle.
         </p>
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-6 sm:space-y-7">
         {/* Node Identity Display */}
         {identity && (
-          <div className="flex flex-col gap-1.5 p-3.5 bg-void border border-dim rounded">
+          <div className="flex flex-col gap-2 p-4 bg-void border border-dim rounded-md">
             <span className="type-uppercase-label text-fg-secondary select-none">
               Active Node Identity
             </span>
@@ -130,7 +130,7 @@ export const RoomCreator: React.FC = () => {
                 className="w-2 h-2 rounded-full shrink-0"
                 style={{ backgroundColor: identity.peerColor }}
               />
-              <span className="type-peer-name text-fg-primary">
+              <span className="type-peer-name text-fg-primary text-sm sm:text-base">
                 @{identity.handle}
               </span>
             </div>
@@ -141,7 +141,7 @@ export const RoomCreator: React.FC = () => {
         <div className="h-px bg-dim" />
 
         {isOffline && (
-          <div className="p-3 bg-accretion/10 border border-accretion/30 text-accretion text-caption font-mono rounded select-none text-center">
+          <div className="p-3.5 bg-accretion/10 border border-accretion/30 text-accretion text-xs font-mono rounded-md select-none text-center">
             You are offline. Create and join require network signaling.
           </div>
         )}
@@ -153,6 +153,7 @@ export const RoomCreator: React.FC = () => {
           </h2>
           <Button
             type="submit"
+            size="lg"
             className="w-full"
             loading={isCreating}
             disabled={isJoining || isOffline}
@@ -160,7 +161,7 @@ export const RoomCreator: React.FC = () => {
             Create room
           </Button>
           {createError && (
-            <p className="text-caption font-mono text-redshift mt-1">{createError}</p>
+            <p className="text-xs font-mono text-redshift mt-1">{createError}</p>
           )}
         </form>
 
@@ -178,13 +179,14 @@ export const RoomCreator: React.FC = () => {
               onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
               placeholder="6-character code"
               maxLength={8}
-              className="font-mono uppercase text-center text-lg tracking-wider"
+              className="font-mono uppercase text-center text-sm tracking-[0.2em]"
               disabled={isJoining || isCreating || isOffline}
             />
             <Button
               type="submit"
               variant="ghost"
-              className="shrink-0"
+              size="lg"
+              className="shrink-0 min-w-[88px]"
               loading={isJoining}
               disabled={isCreating || !roomCode || isOffline}
             >
@@ -192,12 +194,13 @@ export const RoomCreator: React.FC = () => {
             </Button>
           </div>
           {joinError && (
-            <p className="text-caption font-mono text-decay mt-1">{joinError}</p>
+            <p className="text-xs font-mono text-decay mt-1">{joinError}</p>
           )}
         </form>
       </div>
 
-      {/* Footer info */}        <div className="mt-8 text-center type-micro text-fg-subtle">
+      {/* Footer info */}
+      <div className="mt-6 text-center text-xs text-fg-subtle">
         <p>P2P WebRTC • E2EE • No servers</p>
       </div>
     </div>
