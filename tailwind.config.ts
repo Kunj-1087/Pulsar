@@ -35,7 +35,7 @@ const config: Config = {
 
       // ── Color Tokens (Deep Field Palette) ──
       colors: {
-        void: "#06070C",
+        void: "#000000",
         surface: {
           DEFAULT: "var(--bg-surface)",
           elevated: "var(--bg-elevated)",

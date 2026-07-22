@@ -79,7 +79,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         className={cn(
           "bubble-container max-w-[80%] md:max-w-[70%] px-3 py-2 text-sm shadow-none border font-sans break-words relative transition-colors duration-100 ease-[cubic-bezier(0.16,1,0.3,1)]",
           isOwn
-            ? "bg-surface-elevated text-fg-primary rounded-[12px_12px_4px_12px] border-pulsar/30 shadow-[0_2px_12px_rgba(76,201,240,0.06)]"
+            ? "bg-surface-elevated text-fg-primary rounded-[12px_12px_4px_12px] border-pulsar/30 shadow-[0_2px_12px_rgba(229,9,20,0.06)]"
             : "bg-surface text-fg-primary rounded-[12px_12px_12px_4px] border-dim",
           isGroupHovered && (isOwn ? "bg-surface-hover border-pulsar/50" : "bg-surface-elevated border-border-strong"),
           shouldAnimate && (isOwn ? "quark-animate-sent" : "quark-animate-received")

@@ -51,7 +51,7 @@ export const Toast: React.FC<ToastProps> = ({ toast }) => {
           "text-nebula": type === 'success',
           "text-accretion": type === 'warning',
           "text-redshift": type === 'error',
-          "text-pulsar": type === 'info',
+          "text-fg-secondary": type === 'info',
         })}
       />
 

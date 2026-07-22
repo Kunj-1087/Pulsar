@@ -249,7 +249,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           className={cn(
                 "w-11 h-11 md:w-10 md:h-10 p-0 rounded-full shrink-0 transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] border border-transparent flex items-center justify-center",
                 text.trim()
-                  ? "bg-pulsar text-void hover:bg-pulsar-hover shadow-[0_0_16px_rgba(76,201,240,0.3)] font-bold"
+                  ? "bg-pulsar text-void hover:bg-pulsar-hover shadow-[0_0_16px_rgba(229,9,20,0.3)] font-bold"
                   : "bg-surface text-fg-subtle border-dim cursor-not-allowed"
           )}
           title="Send message"

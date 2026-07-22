@@ -246,7 +246,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                       borderFlashRed
                         ? "border-redshift"
                         : isFocused
-                        ? "border-pulsar shadow-[0_0_0_1px_rgba(76,201,240,0.4)]"
+                        ? "border-pulsar shadow-[0_0_0_1px_rgba(229,9,20,0.4)]"
                         : "border-dim"
                     )}
                   >

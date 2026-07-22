@@ -267,7 +267,7 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
             <div
               className={cn(
                 "h-full transition-all",
-                hasCompleted ? "bg-nebula shadow-[0_0_12px_rgba(46,196,182,0.4)]" : "bg-pulsar shadow-[0_0_12px_rgba(76,201,240,0.4)]"
+                hasCompleted ? "bg-nebula shadow-[0_0_12px_rgba(204,204,204,0.4)]" : "bg-pulsar shadow-[0_0_12px_rgba(229,9,20,0.4)]"
               )}
               style={{
                 width: `${localProgress}%`,
