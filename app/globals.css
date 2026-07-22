@@ -127,6 +127,32 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* ── Room Creator Scoped Theme ──
+   Overrides the cyan pulsar accent to a deliberate red palette
+   within the room-landing screen. Also adds glass/glow tokens
+   used by the polished card and controls. Everything inside
+   .room-creator-theme that references --accent-pulsar (via
+   bg-pulsar, text-pulsar, etc.) automatically renders in red. */
+.room-creator-theme {
+  --accent-pulsar:       #DC3B4A;
+  --accent-pulsar-hover: #C82D3C;
+  --accent-pulsar-dim:   #8C1F2A;
+  --border-focus:        #DC3B4A;
+
+  /* Glass card surface */
+  --card-bg:           rgba(15, 18, 32, 0.82);
+  --card-border:       rgba(220, 59, 74, 0.12);
+  --card-shadow:       0 8px 32px rgba(0, 0, 0, 0.55), 0 0 20px rgba(220, 59, 74, 0.06);
+  --card-glow-aura:    radial-gradient(ellipse at center, rgba(220, 59, 74, 0.08) 0%, transparent 60%);
+
+  /* Button depth */
+  --btn-glow:          0 4px 16px rgba(220, 59, 74, 0.2);
+  --btn-glow-hover:    0 4px 24px rgba(220, 59, 74, 0.35);
+
+  /* Active node box */
+  --node-border:       rgba(220, 59, 74, 0.08);
+}
+
 /* ══════════════════════════════════════════════════════════════
    TYPOGRAPHY — Font Feature Settings
    ══════════════════════════════════════════════════════════════ */
@@ -156,8 +182,8 @@ body {
   .type-terminal-prefix {
     font-family: var(--font-mono);
     font-weight: 500;
-    font-size: 12px;
-    line-height: 16px;
+    font-size: 14px;
+    line-height: 20px;
     color: var(--fg-subtle);
   }
 
@@ -165,8 +191,8 @@ body {
   .type-terminal-msg {
     font-family: var(--font-mono);
     font-weight: 400;
-    font-size: 12px;
-    line-height: 16px;
+    font-size: 14px;
+    line-height: 20px;
     color: var(--fg-muted);
   }
 
@@ -174,9 +200,9 @@ body {
   .type-uppercase-label {
     font-family: var(--font-mono);
     font-weight: 500;
-    font-size: 11px;
-    line-height: 14px;
-    letter-spacing: 0.2em;
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
   }
 
@@ -202,8 +228,8 @@ body {
   .type-peer-name {
     font-family: var(--font-mono);
     font-weight: 500;
-    font-size: 14px;
-    line-height: 20px;
+    font-size: 16px;
+    line-height: 24px;
     letter-spacing: 0;
   }
 
@@ -342,6 +368,26 @@ body {
 @keyframes quark-glow-pulse {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.4; }
+}
+
+/* ── Nebula Ambient Drift ── */
+@keyframes nebula-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25%      { transform: translate(30px, -20px) scale(1.03); }
+  50%      { transform: translate(-20px, 30px) scale(0.97); }
+  75%      { transform: translate(10px, 10px) scale(1.01); }
+}
+
+@keyframes nebula-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25%      { transform: translate(-25px, 15px) scale(1.02); }
+  50%      { transform: translate(20px, -25px) scale(0.98); }
+  75%      { transform: translate(-10px, -5px) scale(1.01); }
+}
+
+@keyframes nebula-fade {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.7; }
 }
 
 /* ── Toast ── */

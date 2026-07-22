@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { isValidRoomCode } from '../../lib/roomCode';
+import { StarfieldBackground } from './StarfieldBackground';
 
 export const RoomCreator: React.FC = () => {
   const router = useRouter();
@@ -107,101 +108,126 @@ export const RoomCreator: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-[440px] px-4 py-6 sm:px-6 sm:py-8 border border-dim bg-surface rounded-lg shadow-2xl">
-      {/* Wordmark logo */}
-      <div className="text-center mb-6 sm:mb-8">
-        <h1 className="type-wordmark text-4xl sm:text-5xl text-pulsar drop-shadow-[0_0_24px_rgba(76,201,240,0.25)]">
-          quark
-        </h1>
-        <p className="type-terminal-msg text-fg-secondary mt-2 text-sm sm:text-base">
-          Chat without the middle.
-        </p>
+    <div className="room-creator-theme relative w-full flex flex-col items-center justify-center">
+      <StarfieldBackground />
+
+      {/* Soft glow aura behind the card — bleeds red light into the starfield */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-[1]" aria-hidden="true">
+        <div className="w-[520px] h-[620px]" style={{ background: 'var(--card-glow-aura)' }} />
       </div>
 
-      <div className="space-y-6 sm:space-y-7">
-        {/* Node Identity Display */}
-        {identity && (
-          <div className="flex flex-col gap-2 p-4 bg-void border border-dim rounded-md">
-            <span className="type-uppercase-label text-fg-secondary select-none">
-              Active Node Identity
-            </span>
-            <div className="flex items-center gap-2 select-none">
-              <span
-                className="w-2 h-2 rounded-full shrink-0"
-                style={{ backgroundColor: identity.peerColor }}
-              />
-              <span className="type-peer-name text-fg-primary text-sm sm:text-base">
-                @{identity.handle}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Section divider line */}
-        <div className="h-px bg-dim" />
-
-        {isOffline && (
-          <div className="p-3.5 bg-accretion/10 border border-accretion/30 text-accretion text-xs font-mono rounded-md select-none text-center">
-            You are offline. Create and join require network signaling.
-          </div>
-        )}
-
-        {/* Create Room Form */}
-        <form onSubmit={handleCreateRoom} className="space-y-3">
-          <h2 className="type-uppercase-label text-fg-secondary">
-            New room
-          </h2>
-          <Button
-            type="submit"
-            size="lg"
-            className="w-full"
-            loading={isCreating}
-            disabled={isJoining || isOffline}
+      {/* Card surface — glassmorphism with backdrop blur */}
+      <div
+        className="relative z-10 w-full max-w-[440px] px-4 py-6 sm:px-6 sm:py-8 rounded-lg"
+        style={{
+          background: 'var(--card-bg)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          border: '1px solid var(--card-border)',
+          boxShadow: 'var(--card-shadow)',
+        }}
+      >
+        {/* Wordmark logo */}
+        <div className="text-center mb-8 sm:mb-10">
+          <h1
+            className="type-wordmark text-4xl sm:text-5xl text-pulsar"
+            style={{
+              filter: 'drop-shadow(0 0 30px rgba(220,59,74,0.3)) drop-shadow(0 0 60px rgba(220,59,74,0.08))',
+            }}
           >
-            Create room
-          </Button>
-          {createError && (
-            <p className="text-xs font-mono text-redshift mt-1">{createError}</p>
+            quark
+          </h1>
+          <p className="type-terminal-msg text-fg-secondary mt-3 text-sm sm:text-base">
+            Chat without the middle.
+          </p>
+        </div>
+
+        <div className="space-y-7 sm:space-y-8">
+          {/* Node Identity Display */}
+          {identity && (
+            <div className="flex flex-col gap-2 p-4 bg-void rounded-md"
+              style={{ border: '1px solid var(--node-border)' }}>
+              <span className="type-uppercase-label text-fg-secondary select-none">
+                Active Node Identity
+              </span>
+              <div className="flex items-center gap-2 select-none">
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: identity.peerColor }}
+                />
+                <span className="type-peer-name text-fg-primary text-sm sm:text-base">
+                  @{identity.handle}
+                </span>
+              </div>
+            </div>
           )}
-        </form>
 
-        {/* Section divider line */}
-        <div className="h-px bg-dim" />
+          {/* Section divider line */}
+          <div className="h-px bg-gradient-to-r from-transparent via-pulsar/15 to-transparent" />
 
-        {/* Join Room Form */}
-        <form onSubmit={handleJoinRoom} className="space-y-3">
-          <h2 className="type-uppercase-label text-fg-muted">
-            Join a room
-          </h2>
-          <div className="flex gap-2">
-            <Input
-              value={roomCode}
-              onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-              placeholder="6-character code"
-              maxLength={8}
-              className="font-mono uppercase text-center text-sm tracking-[0.2em]"
-              disabled={isJoining || isCreating || isOffline}
-            />
+          {isOffline && (
+            <div className="p-3.5 bg-accretion/10 border border-accretion/30 text-accretion text-xs font-mono rounded-md select-none text-center">
+              You are offline. Create and join require network signaling.
+            </div>
+          )}
+
+          {/* Create Room Form */}
+          <form onSubmit={handleCreateRoom} className="space-y-3">
+            <h2 className="type-uppercase-label text-fg-secondary">
+              New room
+            </h2>
             <Button
               type="submit"
-              variant="ghost"
               size="lg"
-              className="shrink-0 min-w-[88px]"
-              loading={isJoining}
-              disabled={isCreating || !roomCode || isOffline}
+              className="bg-gradient-to-b from-[#E84A58] to-[var(--accent-pulsar)] hover:from-[var(--accent-pulsar)] hover:to-[var(--accent-pulsar-hover)] w-full shadow-[var(--btn-glow)] hover:shadow-[var(--btn-glow-hover)] transition-all duration-200"
+              loading={isCreating}
+              disabled={isJoining || isOffline}
             >
-              Join
+              Create room
             </Button>
-          </div>
-          {joinError && (
-            <p className="text-xs font-mono text-decay mt-1">{joinError}</p>
-          )}
-        </form>
-      </div>
+            {createError && (
+              <p className="text-xs font-mono text-redshift mt-1">{createError}</p>
+            )}
+          </form>
 
-      {/* Footer info */}
-      <div className="mt-6 text-center text-xs text-fg-subtle">
-        <p>P2P WebRTC • E2EE • No servers</p>
+          {/* Section divider line */}
+          <div className="h-px bg-gradient-to-r from-transparent via-pulsar/15 to-transparent" />
+
+          {/* Join Room Form */}
+          <form onSubmit={handleJoinRoom} className="space-y-3">
+            <h2 className="type-uppercase-label text-fg-muted">
+              Join a room
+            </h2>
+            <div className="flex gap-2">
+              <Input
+                value={roomCode}
+                onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                placeholder="6-character code"
+                maxLength={8}
+                className="font-mono uppercase text-center text-sm tracking-[0.2em]"
+                disabled={isJoining || isCreating || isOffline}
+              />
+              <Button
+                type="submit"
+                variant="ghost"
+                size="lg"
+                className="shrink-0 min-w-[88px] hover:border-pulsar hover:text-pulsar hover:shadow-[0_0_16px_rgba(220,59,74,0.12)] transition-all duration-200"
+                loading={isJoining}
+                disabled={isCreating || !roomCode || isOffline}
+              >
+                Join
+              </Button>
+            </div>
+            {joinError && (
+              <p className="text-xs font-mono text-decay mt-1">{joinError}</p>
+            )}
+          </form>
+        </div>
+
+        {/* Footer info */}
+        <div className="mt-7 text-center text-xs text-fg-subtle">
+          <p>P2P WebRTC • E2EE • No servers</p>
+        </div>
       </div>
     </div>
   );

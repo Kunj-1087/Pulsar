@@ -16,6 +16,9 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  experimental: {
+    serverComponentsExternalPackages: ['ably'],
+  },
 };
 
 export default withPWA(nextConfig);

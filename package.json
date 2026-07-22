@@ -34,6 +34,7 @@
     "e2e:headed": "playwright test --headed",
     "security:audit": "npm audit --audit-level=moderate",
     "signal": "node server.js",
+    "dev:all": "concurrently -n \"NEXT,SIGNAL\" -c \"cyan,magenta\" \"npm run dev\" \"npm run signal\"",
     "offline": "node scripts/offline-hub.js",
     "offline:dev": "node scripts/offline-hub.js --dev",
     "offline:https": "node scripts/offline-hub-https.js"

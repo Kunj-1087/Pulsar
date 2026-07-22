@@ -8,7 +8,7 @@ export default function Home() {
   const isOfflineMode = process.env.NEXT_PUBLIC_OFFLINE_MODE === 'true';
 
   return (
-    <main className="min-h-[100dvh] w-full flex flex-col items-center justify-center bg-void px-4 py-6 sm:px-6 overflow-y-auto">
+    <main className="min-h-[100dvh] w-full flex flex-col items-center justify-center bg-black px-4 py-6 sm:px-6 overflow-hidden">
       <IdentityGate>
         {/* Offline Mode Info Block */}
         {isOfflineMode && (

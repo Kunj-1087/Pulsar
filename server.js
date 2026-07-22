@@ -126,14 +126,43 @@ if (HTTPS_ENABLED) {
     cert: fs.readFileSync(TLS_CERT_PATH, 'utf-8'),
     key: fs.readFileSync(TLS_KEY_PATH, 'utf-8'),
   };
-  server = https.createServer(certOptions);
+  server = https.createServer(certOptions, (req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        rooms: rooms.size,
+        uptime: process.uptime(),
+        connections: totalConnectedSockets,
+      }));
+      return;
+    }
+    res.writeHead(426, { 'Content-Type': 'text/plain' });
+    res.end('Upgrade Required — WebSocket only');
+  });
   console.log('[Quark] HTTPS mode enabled');
 } else {
-  server = http.createServer();
+  server = http.createServer((req, res) => {
+    if (req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        ok: true,
+        rooms: rooms.size,
+        uptime: process.uptime(),
+        connections: totalConnectedSockets,
+      }));
+      return;
+    }
+    res.writeHead(426, { 'Content-Type': 'text/plain' });
+    res.end('Upgrade Required — WebSocket only');
+  });
   console.log('[Quark] HTTP mode enabled');
 }
 
 const wss = new WebSocketServer({ server });
+
+// rooms: Map<roomId, Set<WebSocket>>
+const rooms = new Map();
 
 let totalConnectedSockets = 0;
 const ipConnLimiter = new RollingWindowLimiter(IP_CONN_LIMIT, WINDOW_MS);
@@ -411,9 +440,6 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// rooms: Map<roomId, Set<WebSocket>>
-const rooms = new Map();
-
 // Active connection sweep (ping every 30s)
 const pingInterval = setInterval(() => {
   wss.clients.forEach((ws) => {
@@ -436,24 +462,6 @@ const protocol = HTTPS_ENABLED ? 'wss' : 'ws';
 server.listen(SIGNALING_PORT, '0.0.0.0', () => {
   const mode = OFFLINE_MODE ? 'OFFLINE' : 'ONLINE';
   console.log(`[Quark] Signaling server (${mode} mode) running on ${protocol}://0.0.0.0:${SIGNALING_PORT}`);
-  console.log(`[Quark] Rate limits - Conn: ${IP_CONN_LIMIT}/min, Join: ${IP_JOIN_LIMIT}/min, Msg: ${SOCKET_MSG_LIMIT}/sec`);
-});
-      return ws.terminate();
-    }
-    ws.isAlive = false;
-    ws.ping();
-  });
-}, 30000);
-
-server.on('close', () => {
-  clearInterval(pingInterval);
-  clearInterval(cleanupInterval);
-});
-
-// Bind to 0.0.0.0 (all interfaces) so it's reachable from other devices on the LAN
-const protocol = HTTPS_ENABLED ? 'wss' : 'ws';
-server.listen(SIGNALING_PORT, '0.0.0.0', () => {
-  const mode = OFFLINE_MODE ? 'OFFLINE' : 'ONLINE';
-  console.log(`[Quark] Signaling server (${mode} mode) running on ${protocol}://0.0.0.0:${SIGNALING_PORT}`);
+  console.log(`[Quark] Health check: http://localhost:${SIGNALING_PORT}/health`);
   console.log(`[Quark] Rate limits - Conn: ${IP_CONN_LIMIT}/min, Join: ${IP_JOIN_LIMIT}/min, Msg: ${SOCKET_MSG_LIMIT}/sec`);
 });
