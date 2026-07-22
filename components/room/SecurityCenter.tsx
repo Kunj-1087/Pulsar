@@ -66,11 +66,11 @@ export const SecurityCenter: React.FC<SecurityCenterProps> = ({ onClose }) => {
                         {p.handle || p.displayName || p.peerId.substring(0, 8)}
                       </span>
                       {p.e2eeStatus === 'established' ? (
-                        <span title="E2EE Established"><Lock className="w-3 h-3 text-quantum" /></span>
+                        <span title="E2EE Established"><Lock className="w-3 h-3 text-nebula" /></span>
                       ) : p.e2eeStatus === 'pending' ? (
-                        <span title="E2EE Pending"><ShieldAlert className="w-3 h-3 text-pulse" /></span>
+                        <span title="E2EE Pending"><ShieldAlert className="w-3 h-3 text-accretion" /></span>
                       ) : (
-                        <span title="E2EE Failed"><ShieldAlert className="w-3 h-3 text-decay" /></span>
+                        <span title="E2EE Failed"><ShieldAlert className="w-3 h-3 text-redshift" /></span>
                       )}
                     </div>
                     {p.e2eeSafetyNumber && (

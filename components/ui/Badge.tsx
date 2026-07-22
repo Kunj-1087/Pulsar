@@ -14,16 +14,16 @@ export const Badge: React.FC<BadgeProps> = ({ variant = 'default', label, classN
       className={cn(
         "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm text-xs font-mono border",
         {
-          // Connected: photon green
-          "border-photon/30 bg-photon/10 text-photon": variant === 'connected',
-          // Connecting: pulse amber
-          "border-pulse/30 bg-pulse/10 text-pulse": variant === 'connecting',
-          // Disconnected: decay red
-          "border-decay/30 bg-decay/10 text-decay": variant === 'disconnected',
-          // LAN: flux cyan
-          "border-flux/30 bg-flux/10 text-flux": variant === 'lan',
+          // Connected: nebula teal
+          "border-nebula/30 bg-nebula/10 text-nebula": variant === 'connected',
+          // Connecting: accretion amber
+          "border-accretion/30 bg-accretion/10 text-accretion": variant === 'connecting',
+          // Disconnected: redshift red
+          "border-redshift/30 bg-redshift/10 text-redshift": variant === 'disconnected',
+          // LAN: pulsar cyan
+          "border-pulsar/30 bg-pulsar/10 text-pulsar": variant === 'lan',
           // Default
-          "border-border bg-bg-surface text-fg-primary": variant === 'default',
+          "border-dim bg-surface text-fg-primary": variant === 'default',
         },
         className
       )}
@@ -35,9 +35,9 @@ export const Badge: React.FC<BadgeProps> = ({ variant = 'default', label, classN
           className={cn(
             "w-1.5 h-1.5 rounded-full shrink-0",
             {
-              "bg-photon": variant === 'connected',
-              "bg-pulse": variant === 'connecting',
-              "bg-decay": variant === 'disconnected',
+              "bg-nebula": variant === 'connected',
+              "bg-accretion": variant === 'connecting',
+              "bg-redshift": variant === 'disconnected',
               "animate-pulse": isPulsing,
             }
           )}

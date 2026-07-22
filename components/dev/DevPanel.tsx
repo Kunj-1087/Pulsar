@@ -165,59 +165,59 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
 
   return (
     <>
-      <div
-        className={cn(
-          "fixed top-0 right-0 h-full w-[360px] border-l border-border bg-bg-base flex flex-col font-mono text-caption select-none text-fg-primary z-40 transition-all",
-          devModeEnabled
-            ? "translate-x-0 opacity-100 duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]"
-            : "translate-x-full opacity-0 pointer-events-none duration-180 ease-[cubic-bezier(0.4,0,1,1)]"
-        )}
-      >
-        {/* Header */}
-        <div className="h-[52px] px-4 border-b border-border flex items-center justify-between bg-bg-base">
-          <div className="flex items-center gap-2 text-fg-primary">
-            <Terminal className="w-4 h-4 text-pulse" />
-            <span className="type-uppercase-label">Dev Diagnostics</span>
-          </div>
-          <button
-            onClick={toggleDevMode}
-            className="text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
-            title="Close Panel"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      <aside
+      className={cn(
+        "fixed top-0 right-0 h-full w-[360px] border-l border-dim bg-surface flex flex-col font-mono text-caption select-none text-fg-primary z-40 transition-all shadow-2xl",
+        devModeEnabled
+          ? "translate-x-0 opacity-100 duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]"
+          : "translate-x-full opacity-0 pointer-events-none duration-180 ease-[cubic-bezier(0.4,0,1,1)]"
+      )}
+    >
+      {/* Panel header */}
+      <div className="h-10 border-b border-dim px-3 flex items-center justify-between bg-surface-elevated shrink-0">
+        <div className="flex items-center gap-2 text-fg-primary">
+          <Terminal className="w-4 h-4 text-pulsar" />
+          <span className="type-uppercase-label text-pulsar font-bold">Dev Diagnostics</span>
         </div>
+        <button
+          onClick={toggleDevMode}
+          className="text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
+          title="Close Panel"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
 
-        {/* Scrollable sections */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          
-          {/* Section 1: Connection */}
-          <div className="border border-border rounded">
-            <button
-              onClick={() => toggleSection('connection')}
-              className="w-full px-3 py-2 flex items-center justify-between bg-bg-surface font-semibold text-fg-primary hover:bg-bg-hover text-left"
-            >
-              <span className="type-uppercase-label">1. Connection State</span>
-              <span className="flex items-center gap-0.5">
-                <span className="text-fg-muted">[</span>
-                <ChevronRight
-                  className={cn(
-                    "w-3 h-3 transition-transform duration-150 ease-standard",
-                    expandedSection === 'connection' && "rotate-90"
-                  )}
-                />
-                <span className="text-fg-muted">]</span>
-              </span>
-            </button>
-            <div
-              className={cn(
-                "transition-all overflow-hidden border-t",
-                expandedSection === 'connection'
-                  ? "max-h-[400px] opacity-100 border-border duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
-                  : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
-              )}
-            >
-              <div className="p-3 space-y-2 bg-bg-base/50">
+      {/* Scrollable sections */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        
+        {/* Section 1: Connection */}
+        <div className="border border-dim rounded">
+          <button
+            onClick={() => toggleSection('connection')}
+            className="w-full px-3 py-2 flex items-center justify-between bg-surface-elevated font-semibold text-fg-primary hover:bg-surface-hover text-left"
+          >
+            <span className="type-uppercase-label">1. Connection State</span>
+            <span className="flex items-center gap-0.5">
+              <span className="text-fg-muted">[</span>
+              <ChevronRight
+                className={cn(
+                  "w-3 h-3 transition-transform duration-150 ease-standard",
+                  expandedSection === 'connection' && "rotate-90"
+                )}
+              />
+              <span className="text-fg-muted">]</span>
+            </span>
+          </button>
+          <div
+            className={cn(
+              "transition-all overflow-hidden border-t",
+              expandedSection === 'connection'
+                ? "max-h-[400px] opacity-100 border-dim duration-400 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                : "max-h-0 opacity-0 border-transparent duration-250 ease-[cubic-bezier(0.4,0,1,1)]"
+            )}
+          >
+            <div className="p-3 space-y-2 bg-void/50">
                 <div className="flex justify-between">
                   <span className="text-fg-muted">Signaling Transport:</span>
                   <span className="font-bold text-fg-primary">{signalingDriverName}</span>
@@ -594,7 +594,7 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
           <ShieldAlert className="w-3.5 h-3.5 text-pulse shrink-0" />
           <span>{'//'} Local telemetry. No cloud reports.</span>
         </div>
-      </div>
+      </aside>
 
       {/* SDP Viewer Modal Overlay */}
       {sdpModalType && (

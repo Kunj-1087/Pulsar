@@ -37,21 +37,21 @@ export const Toast: React.FC<ToastProps> = ({ toast }) => {
       role={type === 'error' ? 'alert' : 'status'}
       aria-live="polite"
       className={cn(
-        "w-full max-w-sm bg-bg-elevated border border-border/80 font-mono text-caption text-fg-primary shadow-xl rounded overflow-hidden select-none p-3.5 flex items-start gap-3 transition-all duration-300 relative border-l-4 animate-[quark-toast-in_250ms_cubic-bezier(0.16,1,0.3,1)_forwards]",
+        "w-full max-w-sm bg-surface-elevated border border-dim font-mono text-caption text-fg-primary shadow-xl rounded overflow-hidden select-none p-3.5 flex items-start gap-3 transition-all duration-300 relative border-l-4 animate-[quark-toast-in_250ms_cubic-bezier(0.16,1,0.3,1)_forwards]",
         {
-          "border-l-photon": type === 'success',
-          "border-l-pulse": type === 'warning',
-          "border-l-decay": type === 'error',
-          "border-l-fg-muted": type === 'info',
+          "border-l-nebula": type === 'success',
+          "border-l-accretion": type === 'warning',
+          "border-l-redshift": type === 'error',
+          "border-l-pulsar": type === 'info',
         }
       )}
     >
       <Icon
         className={cn("w-4 h-4 shrink-0 mt-0.5", {
-          "text-photon": type === 'success',
-          "text-pulse": type === 'warning',
-          "text-decay": type === 'error',
-          "text-fg-muted": type === 'info',
+          "text-nebula": type === 'success',
+          "text-accretion": type === 'warning',
+          "text-redshift": type === 'error',
+          "text-pulsar": type === 'info',
         })}
       />
 

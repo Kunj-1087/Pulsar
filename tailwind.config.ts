@@ -33,8 +33,15 @@ const config: Config = {
         'widest': '0.2em',
       },
 
-      // ── Color Tokens ──
+      // ── Color Tokens (Deep Field Palette) ──
       colors: {
+        void: "#06070C",
+        surface: {
+          DEFAULT: "var(--bg-surface)",
+          elevated: "var(--bg-elevated)",
+          hover:    "var(--bg-hover)",
+          active:   "var(--bg-active)",
+        },
         bg: {
           base:     "var(--bg-base)",
           surface:  "var(--bg-surface)",
@@ -51,43 +58,60 @@ const config: Config = {
         },
         border: {
           subtle:  "var(--border-subtle)",
+          dim:     "var(--border-dim)",
           DEFAULT: "var(--border-default)",
           strong:  "var(--border-strong)",
           focus:   "var(--border-focus)",
         },
+        // Core Deep Field Astrophysics Accents
+        pulsar: {
+          DEFAULT: "var(--accent-pulsar)",
+          hover:   "var(--accent-pulsar-hover)",
+          dim:     "var(--accent-pulsar-dim)",
+        },
+        nebula: {
+          DEFAULT: "var(--accent-nebula)",
+          hover:   "var(--accent-nebula-hover)",
+          dim:     "var(--accent-nebula-dim)",
+        },
+        accretion: {
+          DEFAULT: "var(--accent-accretion)",
+          hover:   "var(--accent-accretion-hover)",
+          dim:     "var(--accent-accretion-dim)",
+        },
+        redshift: {
+          DEFAULT: "var(--accent-redshift)",
+          hover:   "var(--accent-redshift-hover)",
+          dim:     "var(--accent-redshift-dim)",
+        },
+        quasar: {
+          DEFAULT: "var(--accent-quasar)",
+          hover:   "var(--accent-quasar-hover)",
+          dim:     "var(--accent-quasar-dim)",
+        },
+        // Legacy compat aliases
         photon: {
-          DEFAULT: "var(--accent-photon)",
-          hover:   "var(--accent-photon-hover)",
-          dim:     "var(--accent-photon-dim)",
+          DEFAULT: "var(--accent-pulsar)",
+          hover:   "var(--accent-pulsar-hover)",
+          dim:     "var(--accent-pulsar-dim)",
         },
         quantum: {
-          DEFAULT: "var(--accent-quantum)",
-          hover:   "var(--accent-quantum-hover)",
-          dim:     "var(--accent-quantum-dim)",
+          DEFAULT: "var(--accent-quasar)",
+          hover:   "var(--accent-quasar-hover)",
+          dim:     "var(--accent-quasar-dim)",
         },
         flux: {
-          DEFAULT: "var(--accent-flux)",
-          hover:   "var(--accent-flux-hover)",
+          DEFAULT: "var(--accent-pulsar)",
+          hover:   "var(--accent-pulsar-hover)",
         },
         pulse: {
-          DEFAULT: "var(--accent-pulse)",
-          hover:   "var(--accent-pulse-hover)",
+          DEFAULT: "var(--accent-accretion)",
+          hover:   "var(--accent-accretion-hover)",
         },
         decay: {
-          DEFAULT: "var(--accent-decay)",
-          hover:   "var(--accent-decay-hover)",
+          DEFAULT: "var(--accent-redshift)",
+          hover:   "var(--accent-redshift-hover)",
         },
-        // Legacy compat aliases (map old names to new tokens)
-        'bg-primary':  "var(--bg-base)",
-        'bg-surface':  "var(--bg-surface)",
-        'bg-elevated': "var(--bg-elevated)",
-        'border-default': "var(--border-default)",
-        'text-primary':   "var(--fg-primary)",
-        'text-bright':    "var(--fg-primary)",
-        'text-muted':     "var(--fg-muted)",
-        'status-green':   "var(--accent-photon)",
-        'status-red':     "var(--accent-decay)",
-        'status-yellow':  "var(--accent-pulse)",
       },
 
       // ── Font Families ──

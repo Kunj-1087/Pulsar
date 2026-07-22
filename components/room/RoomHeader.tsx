@@ -109,24 +109,24 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
           </span>
           {hasPeers && (
             allPeersE2EE ? (
-              <span className="flex items-center gap-1 type-uppercase-label text-quantum border border-quantum/30 bg-quantum/10 rounded px-1.5 py-0.5" title="End-to-end encrypted">
+              <span className="flex items-center gap-1 type-uppercase-label text-nebula border border-nebula/30 bg-nebula/10 rounded px-1.5 py-0.5" title="End-to-end encrypted">
                 <Lock className="w-2.5 h-2.5" />
                 <span>E2EE</span>
               </span>
             ) : anyPeerE2EEFailed ? (
-              <span className="flex items-center gap-1 type-uppercase-label text-decay border border-decay/30 bg-decay/10 rounded px-1.5 py-0.5" title="E2EE key agreement failed">
+              <span className="flex items-center gap-1 type-uppercase-label text-redshift border border-redshift/30 bg-redshift/10 rounded px-1.5 py-0.5" title="E2EE key agreement failed">
                 <ShieldAlert className="w-2.5 h-2.5" />
                 <span>E2EE ALERT</span>
               </span>
             ) : (
-              <span className="flex items-center gap-1 type-uppercase-label text-pulse border border-pulse/30 bg-pulse/10 rounded px-1.5 py-0.5" title="Encrypting channels...">
+              <span className="flex items-center gap-1 type-uppercase-label text-accretion border border-accretion/30 bg-accretion/10 rounded px-1.5 py-0.5" title="Encrypting channels...">
                 <Lock className="w-2.5 h-2.5" />
                 <span>SECURING</span>
               </span>
             )
           )}
           {offlineMode && (
-            <span className="flex items-center gap-1 type-uppercase-label text-flux border border-flux/30 bg-flux/10 rounded px-1.5 py-0.5" title="Offline LAN mode">
+            <span className="flex items-center gap-1 type-uppercase-label text-pulsar border border-pulsar/30 bg-pulsar/10 rounded px-1.5 py-0.5" title="Offline LAN mode">
               <Radio className="w-2.5 h-2.5" />
               <span>OFFLINE LAN</span>
             </span>

@@ -80,7 +80,7 @@ export const FileLightbox: React.FC<FileLightboxProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-bg-base/95 flex items-center justify-center p-4 cursor-zoom-out"
+      className="fixed inset-0 z-50 bg-void/95 flex items-center justify-center p-4 cursor-zoom-out"
       onClick={onClose}
     >
       <div className="relative max-w-full max-h-full flex flex-col items-center">
@@ -88,22 +88,22 @@ export const FileLightbox: React.FC<FileLightboxProps> = ({
         <img
           src={activeUrl}
           alt={activeName}
-          className="max-w-[95vw] max-h-[85vh] object-contain border border-border rounded bg-bg-base"
+          className="max-w-[95vw] max-h-[85vh] object-contain border border-dim rounded bg-void"
         />
 
-        <div className="mt-4 flex gap-4 text-caption font-mono text-fg-muted select-none items-center bg-bg-base/60 px-4 py-2 rounded border border-border/30">
-          <span className="truncate max-w-[200px]">
+        <div className="mt-4 flex gap-4 text-caption font-mono text-fg-muted select-none items-center bg-surface/80 px-4 py-2 rounded border border-dim">
+          <span className="truncate max-w-[200px] text-fg-primary">
             {activeName} ({formatBytes(activeSize)})
           </span>
           {imageMessages.length > 1 && (
-            <span className="text-micro text-fg-muted">Use ← and → to browse</span>
+            <span className="text-micro text-fg-secondary">Use ← and → to browse</span>
           )}
           <button
             onClick={(e) => {
               e.stopPropagation();
               onDownload(activeFileRef);
             }}
-            className="text-fg-primary hover:underline flex items-center gap-1 cursor-pointer"
+            className="text-pulsar hover:underline flex items-center gap-1 cursor-pointer font-bold"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Save</span>
@@ -112,7 +112,7 @@ export const FileLightbox: React.FC<FileLightboxProps> = ({
 
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none cursor-pointer p-1 bg-bg-base/60 border border-border/40 rounded-full"
+          className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none cursor-pointer p-1 bg-surface/80 border border-dim rounded-full"
           aria-label="Close Lightbox"
         >
           <X className="w-4 h-4" />

@@ -263,11 +263,11 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
             <span className="capitalize">{localStatus}...</span>
             <span>{localProgress}%</span>
           </div>
-          <div className="w-full h-1 bg-border rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-surface-elevated border border-dim rounded-full overflow-hidden">
             <div
               className={cn(
                 "h-full transition-all",
-                hasCompleted ? "bg-fg-primary" : "bg-fg-primary"
+                hasCompleted ? "bg-nebula shadow-[0_0_12px_rgba(46,196,182,0.4)]" : "bg-pulsar shadow-[0_0_12px_rgba(76,201,240,0.4)]"
               )}
               style={{
                 width: `${localProgress}%`,
@@ -291,10 +291,10 @@ export const FileTransfer: React.FC<FileTransferProps> = ({ fileRef }) => {
             </div>
           </div>
 
-          <div className="flex justify-end mt-1.5 border-t border-border/20 pt-1">
+          <div className="flex justify-end mt-1.5 border-t border-dim/50 pt-1">
             <button
               onClick={handleCancel}
-              className="text-micro text-decay hover:underline font-mono transition-colors"
+              className="text-micro text-redshift hover:underline font-mono transition-colors"
             >
               Cancel
             </button>

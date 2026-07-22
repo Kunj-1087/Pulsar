@@ -107,13 +107,13 @@ export const RoomCreator: React.FC = () => {
   };
 
   return (
-    <div className="w-full max-w-[440px] px-6 py-8 border border-border bg-bg-surface rounded-md">
+    <div className="w-full max-w-[440px] px-6 py-8 border border-dim bg-surface rounded-md shadow-2xl">
       {/* Wordmark logo */}
       <div className="text-center mb-8">
-        <h1 className="type-wordmark text-mega text-fg-primary">
+        <h1 className="type-wordmark text-mega text-pulsar drop-shadow-[0_0_24px_rgba(76,201,240,0.25)]">
           quark
         </h1>
-        <p className="type-terminal-msg text-fg-muted mt-2">
+        <p className="type-terminal-msg text-fg-secondary mt-2">
           Chat without the middle.
         </p>
       </div>
@@ -121,8 +121,8 @@ export const RoomCreator: React.FC = () => {
       <div className="space-y-8">
         {/* Node Identity Display */}
         {identity && (
-          <div className="flex flex-col gap-1.5 p-3.5 bg-bg-base border border-border rounded">
-            <span className="type-uppercase-label text-fg-muted select-none">
+          <div className="flex flex-col gap-1.5 p-3.5 bg-void border border-dim rounded">
+            <span className="type-uppercase-label text-fg-secondary select-none">
               Active Node Identity
             </span>
             <div className="flex items-center gap-2 select-none">
@@ -138,17 +138,17 @@ export const RoomCreator: React.FC = () => {
         )}
 
         {/* Section divider line */}
-        <div className="h-px bg-border" />
+        <div className="h-px bg-dim" />
 
         {isOffline && (
-          <div className="p-3 bg-pulse/10 border border-pulse/30 text-pulse text-caption font-mono rounded select-none text-center">
+          <div className="p-3 bg-accretion/10 border border-accretion/30 text-accretion text-caption font-mono rounded select-none text-center">
             You are offline. Create and join require network signaling.
           </div>
         )}
 
         {/* Create Room Form */}
         <form onSubmit={handleCreateRoom} className="space-y-3">
-          <h2 className="type-uppercase-label text-fg-muted">
+          <h2 className="type-uppercase-label text-fg-secondary">
             New room
           </h2>
           <Button
@@ -160,12 +160,12 @@ export const RoomCreator: React.FC = () => {
             Create room
           </Button>
           {createError && (
-            <p className="text-caption font-mono text-decay mt-1">{createError}</p>
+            <p className="text-caption font-mono text-redshift mt-1">{createError}</p>
           )}
         </form>
 
         {/* Section divider line */}
-        <div className="h-px bg-border" />
+        <div className="h-px bg-dim" />
 
         {/* Join Room Form */}
         <form onSubmit={handleJoinRoom} className="space-y-3">

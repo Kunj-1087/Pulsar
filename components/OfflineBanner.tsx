@@ -34,7 +34,7 @@ export const OfflineBanner: React.FC = () => {
   if (!isOffline) return null;
 
   return (
-    <div className="w-full bg-pulse text-bg-base font-mono text-caption font-bold py-1.5 px-4 flex items-center justify-center gap-2 select-none z-50 relative animate-pulse shadow-md">
+    <div className="w-full bg-accretion text-void font-mono text-caption font-bold py-1.5 px-4 flex items-center justify-center gap-2 select-none z-50 relative animate-pulse shadow-md">
       <WifiOff className="w-3.5 h-3.5 shrink-0" />
       <span>No internet. Peer discovery and room creation unavailable.</span>
     </div>

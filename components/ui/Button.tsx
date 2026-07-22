@@ -20,9 +20,9 @@ export const Button: React.FC<ButtonProps> = ({
   const baseStyle = 'inline-flex items-center justify-center font-mono font-medium rounded transition-all duration-150 active:scale-[0.98] focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 tracking-wide';
   
   const variants = {
-    primary: 'bg-fg-primary text-bg-base hover:bg-fg-secondary border border-transparent',
-    ghost: 'bg-transparent border border-border text-fg-primary hover:bg-bg-hover',
-    danger: 'bg-decay text-bg-base hover:bg-decay-hover border border-transparent',
+    primary: 'bg-pulsar text-void hover:bg-pulsar-hover border border-transparent shadow-sm font-semibold',
+    ghost: 'bg-transparent border border-dim text-fg-primary hover:bg-surface-hover hover:border-border-strong',
+    danger: 'bg-redshift text-fg-primary hover:bg-redshift-hover border border-transparent font-semibold',
   };
 
   const sizes = {

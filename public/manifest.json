@@ -4,8 +4,8 @@
   "description": "Peer-to-peer chat. Nothing in between.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#191919",
-  "theme_color": "#191919",
+  "background_color": "#06070C",
+  "theme_color": "#06070C",
   "orientation": "portrait",
   "icons": [
     {

@@ -188,8 +188,8 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
   // Skip rendering identity gate if identity exists on initial load
   if (checking) {
     return (
-      <div className="fixed inset-0 z-50 bg-bg-base flex items-center justify-center font-mono text-caption text-fg-muted select-none">
-        <span>loading<span className="animate-cursor-blink ml-0.5">_</span></span>
+      <div className="fixed inset-0 z-50 bg-void flex items-center justify-center font-mono text-caption text-fg-secondary select-none">
+        <span>loading<span className="animate-cursor-blink ml-0.5 text-pulsar">_</span></span>
       </div>
     );
   }
@@ -202,20 +202,20 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
   const isButtonDisabled = handle.length === 0 || isInputInvalid || isInitializing;
 
   return (
-    <div className="relative w-full h-full min-h-screen">
+    <div className="relative w-full h-full min-h-screen bg-void">
       {/* Identity creation screen */}
       {showIdentityScreen && (
         <div
           className={cn(
-            "fixed inset-0 z-40 bg-bg-base flex flex-col items-center justify-center p-4 select-none",
+            "fixed inset-0 z-40 bg-void flex flex-col items-center justify-center p-4 select-none",
             fadeState === 'fade-out' ? "opacity-0 transition-opacity duration-300 ease-[cubic-bezier(0.4,0,1,1)]" : "opacity-100"
           )}
         >
           <div className="w-full max-w-[480px] flex flex-col items-stretch text-left font-mono">
             {/* Top boot sequence animated lines */}
-            <div className="type-terminal-msg text-fg-muted whitespace-pre-wrap min-h-[5rem]">
+            <div className="type-terminal-msg text-fg-secondary whitespace-pre-wrap min-h-[5rem]">
               {typedText}
-              {showCursor && <span className="animate-cursor-blink">█</span>}
+              {showCursor && <span className="animate-cursor-blink text-pulsar">█</span>}
             </div>
 
             {/* Fade-in elements staggered via delay styles */}
@@ -223,7 +223,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
               {/* Element 1: Handle prompt */}
               <div
                 className={cn(
-                  "type-terminal-msg text-fg-muted transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
+                  "type-terminal-msg text-fg-secondary transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]",
                   elementsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
                 )}
                 style={{ transitionDelay: '0ms' }}
@@ -244,13 +244,13 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                     className={cn(
                       "flex items-center w-full border-b pb-1.5 transition-colors duration-150 relative",
                       borderFlashRed
-                        ? "border-decay"
+                        ? "border-redshift"
                         : isFocused
-                        ? "border-fg-primary"
-                        : "border-border"
+                        ? "border-pulsar"
+                        : "border-dim"
                     )}
                   >
-                    <span className="type-terminal-prefix select-none mr-2">@</span>
+                    <span className="type-terminal-prefix select-none mr-2 text-pulsar">@</span>
                     <input
                       type="text"
                       value={handle}
@@ -258,7 +258,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                       onFocus={() => setIsFocused(true)}
                       onBlur={() => setIsFocused(false)}
                       placeholder=""
-                      className="flex-1 bg-transparent text-h4 font-mono text-fg-primary placeholder:text-fg-subtle focus:outline-none caret-fg-primary select-text"
+                      className="flex-1 bg-transparent text-h4 font-mono text-fg-primary placeholder:text-fg-subtle focus:outline-none caret-pulsar select-text"
                       disabled={isInitializing}
                       autoFocus
                     />
@@ -270,7 +270,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                         handle.length >= 20
                           ? "text-fg-primary"
                           : handle.length >= 18
-                          ? "text-pulse"
+                          ? "text-accretion"
                           : "text-fg-muted"
                       )}
                     >
@@ -281,7 +281,7 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
                   {/* Inline error description */}
                   <div className="h-6 mt-2 overflow-hidden relative">
                     {errorMsg && (
-                      <p className="text-small font-mono text-decay/80 transition-opacity duration-150 opacity-100 quark-animate-system">
+                      <p className="text-small font-mono text-redshift transition-opacity duration-150 opacity-100 quark-animate-system">
                         {errorMsg}
                       </p>
                     )}

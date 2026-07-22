@@ -183,7 +183,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const showCounter = characterCount >= WARNING_THRESHOLD;
 
   return (
-    <div className="border-t border-border bg-bg-base px-4 py-3 flex flex-col gap-2 relative">
+    <div className="border-t border-dim bg-void px-4 py-3 flex flex-col gap-2 relative">
 
       <div className="flex items-end gap-3.5">
         {/* Attachment Button */}
@@ -198,7 +198,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           variant="ghost"
           onClick={triggerFileSelect}
           disabled={disabled}
-          className="w-10 h-10 p-0 rounded-full shrink-0 border border-border/80 hover:bg-bg-hover"
+          className="w-10 h-10 p-0 rounded-full shrink-0 border border-dim hover:bg-surface-hover hover:border-border-strong"
           title="Attach file (Max 100MB)"
           aria-label="Attach file"
         >
@@ -218,25 +218,25 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             placeholder={disabled ? "waiting for peers..." : "type a message"}
             disabled={disabled}
             className={cn(
-              "w-full bg-bg-elevated border border-border text-fg-primary placeholder:text-fg-subtle font-sans text-body rounded px-3 py-2 resize-none max-h-[120px] focus:outline-none focus:border-fg-primary/60 focus:ring-1 focus:ring-fg-primary/40 disabled:opacity-50 disabled:cursor-not-allowed leading-normal transition-opacity duration-100",
+              "w-full bg-surface border border-dim text-fg-primary placeholder:text-fg-subtle font-sans text-body rounded px-3 py-2 resize-none max-h-[120px] focus:outline-none focus:border-pulsar focus:ring-1 focus:ring-pulsar/40 disabled:opacity-50 disabled:cursor-not-allowed leading-normal transition-opacity duration-100",
               isFlashing && "opacity-60"
             )}
             style={{ height: '40px' }}
           />
           {/* Terminal cursor blink when empty and focused */}
           {isFocused && !text && !disabled && (
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-body font-mono text-fg-primary pointer-events-none animate-cursor-blink">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-body font-mono text-pulsar pointer-events-none animate-cursor-blink">
               █
             </span>
           )}
           <span
               className={cn(
-                "absolute bottom-0 left-0 w-full h-[1px] bg-fg-primary/60 origin-center transition-transform duration-150 ease-standard pointer-events-none",
+                "absolute bottom-0 left-0 w-full h-[1.5px] bg-pulsar origin-center transition-transform duration-150 ease-standard pointer-events-none",
                 isFocused ? "scale-x-100" : "scale-x-0"
               )}
           />
           {showCounter && (
-            <span className="absolute bottom-2.5 right-3.5 text-micro font-mono text-pulse select-none bg-bg-base/60 px-1 rounded">
+            <span className="absolute bottom-2.5 right-3.5 text-micro font-mono text-accretion select-none bg-void/80 px-1 rounded border border-dim">
               {characterCount} / {MAX_CHAR_LIMIT}
             </span>
           )}
@@ -245,11 +245,12 @@ export const MessageInput: React.FC<MessageInputProps> = ({
         {/* Send Button */}
         <Button
           onClick={handleSend}
-          disabled={disabled || !text.trim()}              className={cn(
+          disabled={disabled || !text.trim()}
+          className={cn(
                 "w-10 h-10 p-0 rounded-full shrink-0 transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] border border-transparent",
                 text.trim()
-                  ? "bg-photon text-bg-base hover:bg-photon-hover"
-                  : "bg-bg-surface text-fg-subtle border-border cursor-not-allowed"
+                  ? "bg-pulsar text-void hover:bg-pulsar-hover shadow-[0_0_16px_rgba(76,201,240,0.3)] font-bold"
+                  : "bg-surface text-fg-subtle border-dim cursor-not-allowed"
           )}
           title="Send message"
           aria-label="Send message"
