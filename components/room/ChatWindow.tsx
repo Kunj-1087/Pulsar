@@ -1091,7 +1091,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   );
 
   return (
-    <div className="flex w-screen h-screen overflow-hidden bg-bg-base">
+    <div className="flex w-screen h-[100dvh] overflow-hidden bg-bg-base">
       {/* Main chat interface */}
       <div
         className={cn(

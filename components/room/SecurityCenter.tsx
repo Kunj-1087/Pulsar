@@ -22,10 +22,10 @@ export const SecurityCenter: React.FC<SecurityCenterProps> = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 bg-bg-base/80 flex items-center justify-center p-4">
-      <div className="w-full max-w-[420px] bg-bg-surface border border-border rounded-md p-5 relative select-none max-h-[80vh] overflow-y-auto">
+      <div className="w-full max-w-[420px] bg-bg-surface border border-border rounded-md p-5 relative select-none max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
+          className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none p-2.5 md:p-0"
           aria-label="Close Security Center"
         >
           <X className="w-4 h-4" />
@@ -74,7 +74,7 @@ export const SecurityCenter: React.FC<SecurityCenterProps> = ({ onClose }) => {
                       )}
                     </div>
                     {p.e2eeSafetyNumber && (
-                      <div className="font-mono text-micro text-fg-muted">
+                      <div className="font-mono text-micro text-fg-muted break-all">
                         Safety #: {p.e2eeSafetyNumber}
                       </div>
                     )}

@@ -96,7 +96,7 @@ export const FileLightbox: React.FC<FileLightboxProps> = ({
             {activeName} ({formatBytes(activeSize)})
           </span>
           {imageMessages.length > 1 && (
-            <span className="text-micro text-fg-secondary">Use ← and → to browse</span>
+            <span className="hidden md:inline text-micro text-fg-secondary">Use ← and → to browse</span>
           )}
           <button
             onClick={(e) => {
@@ -110,9 +110,40 @@ export const FileLightbox: React.FC<FileLightboxProps> = ({
           </button>
         </div>
 
+        {imageMessages.length > 1 && (
+          <div className="flex gap-4 mt-3 md:hidden">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const currentIdx = imageMessages.findIndex((m) => m.fileRef?.id === activeImageId);
+                if (currentIdx !== -1) {
+                  const prevIdx = (currentIdx - 1 + imageMessages.length) % imageMessages.length;
+                  setActiveImageId(imageMessages[prevIdx].fileRef!.id);
+                }
+              }}
+              className="h-11 px-5 bg-surface border border-dim text-caption font-mono rounded hover:bg-surface-hover transition-colors text-fg-primary select-none flex items-center justify-center cursor-pointer"
+            >
+              ← Prev
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const currentIdx = imageMessages.findIndex((m) => m.fileRef?.id === activeImageId);
+                if (currentIdx !== -1) {
+                  const nextIdx = (currentIdx + 1) % imageMessages.length;
+                  setActiveImageId(imageMessages[nextIdx].fileRef!.id);
+                }
+              }}
+              className="h-11 px-5 bg-surface border border-dim text-caption font-mono rounded hover:bg-surface-hover transition-colors text-fg-primary select-none flex items-center justify-center cursor-pointer"
+            >
+              Next →
+            </button>
+          </div>
+        )}
+
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none cursor-pointer p-1 bg-surface/80 border border-dim rounded-full"
+          className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none cursor-pointer p-2 bg-surface/80 border border-dim rounded-full"
           aria-label="Close Lightbox"
         >
           <X className="w-4 h-4" />

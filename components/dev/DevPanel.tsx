@@ -167,7 +167,7 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
     <>
       <aside
       className={cn(
-        "fixed top-0 right-0 h-full w-[360px] border-l border-dim bg-surface flex flex-col font-mono text-caption select-none text-fg-primary z-40 transition-all shadow-2xl",
+        "fixed top-0 right-0 h-full w-full sm:w-[360px] border-l border-dim bg-surface flex flex-col font-mono text-caption select-none text-fg-primary z-40 transition-all shadow-2xl",
         devModeEnabled
           ? "translate-x-0 opacity-100 duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]"
           : "translate-x-full opacity-0 pointer-events-none duration-180 ease-[cubic-bezier(0.4,0,1,1)]"
@@ -181,8 +181,9 @@ export const DevPanel: React.FC<DevPanelProps> = ({ onRefreshStats }) => {
         </div>
         <button
           onClick={toggleDevMode}
-          className="text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
+          className="text-fg-muted hover:text-fg-primary transition-colors focus:outline-none p-2.5 md:p-0"
           title="Close Panel"
+          aria-label="Close panel"
         >
           <X className="w-4 h-4" />
         </button>

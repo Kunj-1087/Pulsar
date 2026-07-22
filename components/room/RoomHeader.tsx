@@ -154,7 +154,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
           )}
 
           <div className="flex items-center bg-bg-elevated border border-border rounded px-3 py-1 gap-2.5">
-            <span className="type-uppercase-label text-fg-muted">
+            <span className="hidden sm:inline type-uppercase-label text-fg-muted">
               Room Code
             </span>
             <span className="type-hero-numeral text-fg-primary text-sm font-bold select-all">
@@ -162,7 +162,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
             </span>
             <button
               onClick={handleCopyCode}
-              className="text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
+              className="text-fg-muted hover:text-fg-primary transition-colors focus:outline-none p-1.5 md:p-0"
               title="Copy Code"
               aria-label="Copy Room Code"
             >
@@ -195,7 +195,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
             variant="ghost"
             size="sm"
             onClick={() => setShowQRModal(true)}
-            className="w-8 h-8 p-0"
+            className="w-11 h-11 md:w-8 md:h-8 p-0 flex items-center justify-center animate-[quark-message-in-system_250ms_ease-in_forwards]"
             title="Show QR Code"
             aria-label="Show QR Code"
           >
@@ -207,7 +207,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
             variant="ghost"
             size="sm"
             onClick={handleShare}
-            className="w-8 h-8 p-0"
+            className="w-11 h-11 md:w-8 md:h-8 p-0 flex items-center justify-center"
             title="Share Room Link"
             aria-label="Share Room Link"
           >
@@ -223,7 +223,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
             variant="ghost"
             size="sm"
             onClick={() => window.dispatchEvent(new Event('open-manual-pairing'))}
-            className="w-8 h-8 p-0 border border-dim"
+            className="w-11 h-11 md:w-8 md:h-8 p-0 border border-dim flex items-center justify-center"
             title="Local Offline Pairing"
             aria-label="Local Offline Pairing"
           >
@@ -235,7 +235,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
             variant="ghost"
             size="sm"
             onClick={() => setShowSecurityCenter(true)}
-            className="w-8 h-8 p-0"
+            className="w-11 h-11 md:w-8 md:h-8 p-0 flex items-center justify-center"
             title="Security Center"
             aria-label="Open Security Center"
           >
@@ -247,7 +247,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
             variant={devModeEnabled ? 'primary' : 'ghost'}
             size="sm"
             onClick={toggleDevMode}
-            className="w-8 h-8 p-0"
+            className="w-11 h-11 md:w-8 md:h-8 p-0 flex items-center justify-center"
             title="Toggle Developer Diagnostics"
             aria-label="Toggle Developer Panel"
           >
@@ -259,10 +259,10 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
       {/* QR Code Modal Overlay */}
       {showQRModal && (
         <div className="fixed inset-0 z-50 bg-bg-base/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-[340px] bg-bg-surface border border-border rounded-md p-6 relative">
+          <div className="w-full max-w-[340px] bg-bg-surface border border-border rounded-md p-6 relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowQRModal(false)}
-              className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
+              className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none p-2.5 md:p-0"
               aria-label="Close modal"
             >
               <X className="w-4 h-4" />
@@ -292,12 +292,12 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({ roomId }) => {
                   <Input
                     readOnly
                     value={inviteLink}
-                    className="h-8 text-caption font-mono select-all bg-bg-elevated"
+                    className="h-11 md:h-8 text-small md:text-caption font-mono select-all bg-bg-elevated"
                   />
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 text-xs"
+                    className="h-11 md:h-8 text-small md:text-xs px-4"
                     onClick={handleCopyLink}
                   >
                     {copiedLink ? 'Copied' : 'Copy'}

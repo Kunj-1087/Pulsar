@@ -215,10 +215,10 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-void/90 flex items-center justify-center p-4">
-      <div className="w-full max-w-[440px] bg-surface border border-dim rounded-md p-6 relative flex flex-col font-mono text-caption select-none text-fg-primary shadow-2xl">
+      <div className="w-full max-w-[440px] bg-surface border border-dim rounded-md p-6 relative flex flex-col font-mono text-caption select-none text-fg-primary shadow-2xl max-h-[90vh] overflow-y-auto">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none"
+          className="absolute top-4 right-4 text-fg-muted hover:text-fg-primary transition-colors focus:outline-none p-2.5 md:p-0"
           aria-label="Close Pairing Modal"
         >
           <X className="w-4 h-4" />
@@ -234,10 +234,10 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
               Connect directly with another device on the same local network without using any signaling servers.
             </p>
             <div className="flex flex-col gap-2.5">
-              <Button onClick={handleStartAsInitiator} variant="primary">
+              <Button onClick={handleStartAsInitiator} variant="primary" className="h-11 md:h-10 text-small md:text-sm">
                 1. Invite Peer (Initiator)
               </Button>
-              <Button onClick={() => setRole('receiver')} variant="ghost">
+              <Button onClick={() => setRole('receiver')} variant="ghost" className="h-11 md:h-10 text-small md:text-sm">
                 2. Scan / Paste Invite (Receiver)
               </Button>
             </div>
@@ -258,10 +258,10 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
                   </p>
                   
                   {localOfferStr && (
-                    <div className="bg-fg-primary p-3 inline-block rounded-sm mb-3">
+                    <div className="bg-fg-primary p-4 inline-block rounded-sm mb-3">
                       <QRCodeSVG
                         value={localOfferStr}
-                        size={160}
+                        size={200}
                         bgColor="#f5f5f5"
                         fgColor="#0a0a0a"
                         level="L"
@@ -273,15 +273,15 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
                     <Input
                       readOnly
                       value={localOfferStr}
-                      className="h-8 text-micro font-mono bg-void border-dim"
+                      className="h-11 md:h-8 text-small md:text-micro font-mono bg-void border-dim"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 shrink-0 text-micro"
+                      className="h-11 md:h-8 shrink-0 text-small md:text-micro px-4"
                       onClick={() => handleCopyText(localOfferStr)}
                     >
-                      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
                 </div>
@@ -297,12 +297,12 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
                       placeholder="Paste answer code..."
                       value={remoteAnswerStr}
                       onChange={(e) => setRemoteAnswerStr(e.target.value)}
-                      className="h-8 text-micro font-mono bg-void border-dim"
+                      className="h-11 md:h-8 text-small md:text-micro font-mono bg-void border-dim"
                     />
                     <Button
                       variant="primary"
                       size="sm"
-                      className="h-8 shrink-0 text-micro font-semibold"
+                      className="h-11 md:h-8 shrink-0 text-small md:text-micro font-semibold px-4"
                       onClick={handleApplyAnswer}
                       disabled={!remoteAnswerStr.trim()}
                     >
@@ -325,12 +325,12 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
                 placeholder="Paste offer code..."
                 value={remoteOfferStr}
                 onChange={(e) => setRemoteOfferStr(e.target.value)}
-                className="w-full h-16 p-2 bg-void border border-dim text-micro font-mono text-fg-primary rounded focus:outline-none focus:border-pulsar focus:ring-1 focus:ring-pulsar/40"
+                className="w-full h-20 p-2 bg-void border border-dim text-small md:text-micro font-mono text-fg-primary rounded focus:outline-none focus:border-pulsar focus:ring-1 focus:ring-pulsar/40"
               />
               <Button
                 variant="primary"
                 size="sm"
-                className="w-full h-8 text-xs font-semibold"
+                className="w-full h-11 md:h-8 text-small md:text-xs font-semibold"
                 onClick={handleApplyOfferAndAnswer}
                 loading={isGatheringAnswer}
                 disabled={!remoteOfferStr.trim()}
@@ -346,10 +346,10 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
                   <p className="text-micro text-fg-secondary">
                     Provide this code back to the inviting peer:
                   </p>
-                  <div className="bg-fg-primary p-3 inline-block rounded-sm">
+                  <div className="bg-fg-primary p-4 inline-block rounded-sm">
                     <QRCodeSVG
                       value={localAnswerStr}
-                      size={160}
+                      size={200}
                       bgColor="#f5f5f5"
                       fgColor="#0a0a0a"
                       level="L"
@@ -359,15 +359,15 @@ export const ManualPairingModal: React.FC<ManualPairingModalProps> = ({
                     <Input
                       readOnly
                       value={localAnswerStr}
-                      className="h-8 text-micro font-mono bg-void border-dim"
+                      className="h-11 md:h-8 text-small md:text-micro font-mono bg-void border-dim"
                     />
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-8 shrink-0 text-micro"
+                      className="h-11 md:h-8 shrink-0 text-small md:text-micro px-4"
                       onClick={() => handleCopyText(localAnswerStr)}
                     >
-                      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                      {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                     </Button>
                   </div>
                 </div>

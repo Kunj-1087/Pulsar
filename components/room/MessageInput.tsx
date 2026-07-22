@@ -183,7 +183,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const showCounter = characterCount >= WARNING_THRESHOLD;
 
   return (
-    <div className="border-t border-dim bg-void px-4 py-3 flex flex-col gap-2 relative">
+    <div className="border-t border-dim bg-void px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))] flex flex-col gap-2 relative">
 
       <div className="flex items-end gap-3.5">
         {/* Attachment Button */}
@@ -198,7 +198,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           variant="ghost"
           onClick={triggerFileSelect}
           disabled={disabled}
-          className="w-10 h-10 p-0 rounded-full shrink-0 border border-dim hover:bg-surface-hover hover:border-border-strong"
+          className="w-11 h-11 md:w-10 md:h-10 p-0 rounded-full shrink-0 border border-dim hover:bg-surface-hover hover:border-border-strong flex items-center justify-center"
           title="Attach file (Max 100MB)"
           aria-label="Attach file"
         >
@@ -247,7 +247,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
           onClick={handleSend}
           disabled={disabled || !text.trim()}
           className={cn(
-                "w-10 h-10 p-0 rounded-full shrink-0 transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] border border-transparent",
+                "w-11 h-11 md:w-10 md:h-10 p-0 rounded-full shrink-0 transition-all duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] border border-transparent flex items-center justify-center",
                 text.trim()
                   ? "bg-pulsar text-void hover:bg-pulsar-hover shadow-[0_0_16px_rgba(76,201,240,0.3)] font-bold"
                   : "bg-surface text-fg-subtle border-dim cursor-not-allowed"
