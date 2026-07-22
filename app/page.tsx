@@ -5,13 +5,18 @@ import { useRouter } from 'next/navigation';
 import { ServerOff, UserX, CloudOff, Github, ArrowRight } from 'lucide-react';
 import { IdentityGate } from '../components/room/IdentityGate';
 import { generateRoomCode } from '../lib/roomCode';
+import { useNetworkStatus } from '../lib/useNetworkStatus';
+import { ManualSignalModal } from '../components/room/ManualSignalModal';
 
 export default function Home() {
   const router = useRouter();
+  const isOnline = useNetworkStatus();
+
   const [showJoinInput, setShowJoinInput] = useState(false);
   const [roomCode, setRoomCode] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [manualModalOpen, setManualModalOpen] = useState(false);
 
   const handleCreateRoom = async () => {
     setIsCreating(true);
@@ -108,6 +113,17 @@ export default function Home() {
             )}
           </div>
 
+          {/* Step 10: Surface manual connection option when offline */}
+          {!isOnline && (
+            <button
+              type="button"
+              onClick={() => setManualModalOpen(true)}
+              className="text-[#a3a3a3] hover:text-[#E50914] text-sm underline mt-4 transition-colors cursor-pointer"
+            >
+              No network? Connect manually
+            </button>
+          )}
+
           {error && (
             <p className="text-accent text-xs font-mono mt-3">{error}</p>
           )}
@@ -147,6 +163,12 @@ export default function Home() {
             <span>github.com/kunjnakrani/quark</span>
           </a>
         </footer>
+
+        {/* Step 10: Manual Connection Modal */}
+        <ManualSignalModal
+          open={manualModalOpen}
+          onClose={() => setManualModalOpen(false)}
+        />
       </main>
     </IdentityGate>
   );

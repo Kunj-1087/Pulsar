@@ -5,7 +5,7 @@ import { Plus, X, Check } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
 import { Channel } from '../../types';
 import { generateId } from '../../lib/utils';
-import { createChannel, deleteChannel } from '../../lib/storage';
+import { createChannel, deleteChannel, getChannelsByRoom } from '../../lib/storage';
 import { broadcastChannelCreate, broadcastChannelDelete } from '../../lib/webrtc';
 
 export const ChannelSidebar: React.FC = () => {
@@ -29,23 +29,34 @@ export const ChannelSidebar: React.FC = () => {
     (c, i, arr) => arr.findIndex((x) => x.id === c.id) === i
   );
 
-  // On mount, auto-create #general if empty
+  // On mount, auto-create #general if empty in Dexie
   useEffect(() => {
+    let active = true;
     if (uniqueChannels.length === 0 && room?.roomId) {
-      const generalChannel: Channel = {
-        id: generateId(),
-        roomId: room.roomId,
-        name: 'general',
-        createdAt: Date.now(),
-        createdBy: myPeerId || 'system',
-      };
-      addChannel(generalChannel);
-      createChannel(generalChannel);
-      setActiveChannel(generalChannel.id);
-      if (isHost) {
-        broadcastChannelCreate(generalChannel);
-      }
+      (async () => {
+        const existing = await getChannelsByRoom(room.roomId);
+        if (!active) return;
+        if (existing.length === 0) {
+          const generalChannel: Channel = {
+            id: generateId(),
+            roomId: room.roomId,
+            name: 'general',
+            createdAt: Date.now(),
+            createdBy: myPeerId || 'system',
+          };
+          addChannel(generalChannel);
+          await createChannel(generalChannel);
+          setActiveChannel(generalChannel.id);
+          if (isHost) {
+            broadcastChannelCreate(generalChannel);
+          }
+        } else {
+          existing.forEach((ch: Channel) => addChannel(ch));
+          setActiveChannel(existing[0].id);
+        }
+      })();
     }
+    return () => { active = false; };
   }, [uniqueChannels.length, room?.roomId, isHost, myPeerId, addChannel, setActiveChannel]);
 
   const handleCreateChannel = () => {

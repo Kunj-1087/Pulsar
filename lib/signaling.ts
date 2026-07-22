@@ -1,5 +1,6 @@
 import { SignalingMessage } from '../types';
 import { getSignalingUrl } from './utils';
+import { toast } from '../store/toastStore';
 
 type MessageHandler = (msg: SignalingMessage) => void;
 type StateChangeHandler = (state: 'connected' | 'disconnected' | 'reconnecting' | 'failed') => void;
@@ -14,17 +15,13 @@ export class QuarkSignaling {
 
   private status: 'connected' | 'disconnected' | 'reconnecting' | 'failed' = 'disconnected';
   private intentionalClose = false;
+  private isConnecting = false;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 10;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private generation = 0;
 
   constructor(peerId: string) {
     this.peerId = peerId;
-    // URL fallback chain:
-    //   1. NEXT_PUBLIC_SIGNALING_WS_URL env var
-    //   2. getSignalingUrl() auto-derivation from window.location
-    //   3. Hardcoded localhost fallback
     this.url =
       process.env.NEXT_PUBLIC_SIGNALING_WS_URL ||
       (() => {
@@ -36,6 +33,13 @@ export class QuarkSignaling {
 
   private setStatus(state: 'connected' | 'disconnected' | 'reconnecting' | 'failed') {
     this.status = state;
+    if (state === 'reconnecting') {
+      toast.warning('Signaling connection lost. Reconnecting…', { id: 'signaling-status' });
+    } else if (state === 'connected') {
+      toast.dismiss('signaling-status');
+    } else if (state === 'failed') {
+      toast.error('Signaling connection failed.', { id: 'signaling-status' });
+    }
     this.stateChangeHandler?.(state);
   }
 
@@ -45,19 +49,35 @@ export class QuarkSignaling {
 
   connect(): Promise<void> {
     this.intentionalClose = false;
+
+    // Single-flight guard — never start a second connection attempt while connecting or open
+    if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
+      console.log('[Signaling] Connect call skipped: connection active or in progress');
+      return Promise.resolve();
+    }
+
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    const currentGen = ++this.generation;
+
+    this.isConnecting = true;
 
     return new Promise((resolve, reject) => {
-      console.log(`[Signaling] Connecting (gen ${currentGen}) to ${this.url}`);
-      this.ws = new WebSocket(this.url);
+      console.log(`[Signaling] Connecting to ${this.url}`);
+      try {
+        this.ws = new WebSocket(this.url);
+      } catch (err) {
+        this.isConnecting = false;
+        this.setStatus('failed');
+        reject(err);
+        return;
+      }
 
       const openTimeout = setTimeout(() => {
         if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
-          console.warn('[Signaling] Connection timeout — closing');
+          console.warn('[Signaling] Connection timeout — closing socket');
+          this.isConnecting = false;
           this.ws.close();
           reject(new Error('Connection timeout'));
         }
@@ -65,18 +85,18 @@ export class QuarkSignaling {
 
       this.ws.onopen = () => {
         clearTimeout(openTimeout);
-        if (currentGen !== this.generation) {
-          this.ws?.close();
-          return;
-        }
+        this.isConnecting = false;
+        this.reconnectAttempts = 0; // reset backoff on success
         console.log('[Signaling] Connected');
-        this.reconnectAttempts = 0;
         this.setStatus('connected');
+
+        if (this.roomId) {
+          this.send({ type: 'join-room', roomId: this.roomId, peerId: this.peerId });
+        }
         resolve();
       };
 
       this.ws.onmessage = (event) => {
-        if (currentGen !== this.generation) return;
         try {
           const msg = JSON.parse(event.data) as SignalingMessage;
           console.log('[Signaling] Received:', msg.type);
@@ -88,28 +108,27 @@ export class QuarkSignaling {
 
       this.ws.onerror = () => {
         clearTimeout(openTimeout);
-        if (currentGen !== this.generation) return;
-        console.error('[Signaling] WebSocket error — is the signaling server running?');
+        this.isConnecting = false;
+        console.error('[Signaling] WebSocket error');
+        this.ws?.close();
       };
 
       this.ws.onclose = (event) => {
         clearTimeout(openTimeout);
-        if (currentGen !== this.generation) return;
+        this.isConnecting = false;
         console.log(`[Signaling] Closed (code: ${event.code})`);
         this.setStatus('disconnected');
+
         if (!this.intentionalClose) {
-          this.handleReconnect();
+          this.scheduleReconnect();
         }
       };
     });
   }
 
-  private handleReconnect() {
+  private scheduleReconnect() {
     if (this.intentionalClose) return;
-
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-    }
+    if (this.reconnectTimer) return; // already scheduled, don't stack timers
 
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       console.error(`[Signaling] Max reconnect attempts (${this.maxReconnectAttempts}) reached`);
@@ -117,77 +136,30 @@ export class QuarkSignaling {
       return;
     }
 
-    // Exponential backoff: 1s, 2s, 4s, 8s, capped at 15s
-    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 15000);
-    const jitter = Math.random() * 500;
-    const finalDelay = delay + jitter;
-
+    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // capped exponential backoff
     this.reconnectAttempts++;
-    console.log(`[Signaling] Reconnecting in ${Math.round(finalDelay)}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+    console.log(`[Signaling] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
     this.setStatus('reconnecting');
 
     this.reconnectTimer = setTimeout(() => {
-      if (this.intentionalClose) return;
-
-      const currentGen = ++this.generation;
-      console.log(`[Signaling] Reconnect attempt ${this.reconnectAttempts}`);
-      this.ws = new WebSocket(this.url);
-
-      const openTimeout = setTimeout(() => {
-        if (this.ws && this.ws.readyState !== WebSocket.OPEN) {
-          this.ws.close();
-        }
-      }, 8000);
-
-      this.ws.onopen = () => {
-        clearTimeout(openTimeout);
-        if (currentGen !== this.generation) {
-          this.ws?.close();
-          return;
-        }
-        console.log('[Signaling] Reconnected');
-        this.reconnectAttempts = 0;
-        this.setStatus('connected');
-        if (this.roomId) {
-          this.joinRoom(this.roomId);
-        }
-      };
-
-      this.ws.onmessage = (event) => {
-        if (currentGen !== this.generation) return;
-        try {
-          const msg = JSON.parse(event.data) as SignalingMessage;
-          this.messageHandler?.(msg);
-        } catch (err) {
-          console.error('[Signaling] Parse error (reconnect):', err);
-        }
-      };
-
-      this.ws.onerror = () => {
-        clearTimeout(openTimeout);
-        if (currentGen !== this.generation) return;
-        console.error('[Signaling] Reconnect error');
-      };
-
-      this.ws.onclose = () => {
-        clearTimeout(openTimeout);
-        if (currentGen !== this.generation) return;
-        console.log('[Signaling] Reconnect socket closed');
-        this.setStatus('disconnected');
-        this.handleReconnect();
-      };
-    }, finalDelay);
+      this.reconnectTimer = null;
+      this.connect().catch((err) => {
+        console.warn('[Signaling] Reconnect attempt failed:', err);
+      });
+    }, delay);
   }
 
   joinRoom(roomId: string): void {
     this.roomId = roomId;
-    this.send({ type: 'join-room', roomId, peerId: this.peerId });
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.send({ type: 'join-room', roomId, peerId: this.peerId });
+    }
   }
 
   send(msg: SignalingMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       const str = JSON.stringify(msg);
-      console.log('[Quark Signaling] Sending:', msg.type, msg);
+      console.log('[Quark Signaling] Sending:', msg.type);
       this.ws.send(str);
     } else {
       console.warn('[Quark Signaling] Cannot send — WebSocket not open. State:', this.ws?.readyState);
@@ -204,6 +176,7 @@ export class QuarkSignaling {
 
   disconnect(): void {
     this.intentionalClose = true;
+    this.isConnecting = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;

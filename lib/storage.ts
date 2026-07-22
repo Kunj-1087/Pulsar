@@ -311,6 +311,23 @@ export async function deleteChannel(channelId: string): Promise<void> {
   }
 }
 
+export async function dedupeDefaultChannels(roomId: string): Promise<void> {
+  try {
+    const channels = await getChannelsByRoom(roomId);
+    const generals = channels.filter((c) => c.name === 'general');
+    if (generals.length <= 1) return;
+
+    const keep = generals.sort((a, b) => a.createdAt - b.createdAt)[0]; // keep oldest
+    const toDelete = generals.filter((c) => c.id !== keep.id);
+
+    for (const dup of toDelete) {
+      await deleteChannel(dup.id);
+    }
+  } catch (error) {
+    console.error('Failed to dedupe default channels:', error);
+  }
+}
+
 export async function getMessagesByChannel(roomId: string, channelId: string): Promise<Message[]> {
   try {
     const list = await db.messages.where('roomId').equals(roomId).filter(m => m.channelId === channelId).sortBy('ts');

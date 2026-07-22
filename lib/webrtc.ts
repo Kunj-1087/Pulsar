@@ -958,3 +958,78 @@ export class QuarkRoom {
     this.pendingCandidates.clear();
   }
 }
+
+export function waitForIceGatheringComplete(pc: RTCPeerConnection): Promise<void> {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') {
+      resolve();
+      return;
+    }
+    const checkState = () => {
+      if (pc.iceGatheringState === 'complete') {
+        pc.removeEventListener('icegatheringstatechange', checkState);
+        resolve();
+      }
+    };
+    pc.addEventListener('icegatheringstatechange', checkState);
+  });
+}
+
+export async function createManualOffer(): Promise<string> {
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  const dataChannel = pc.createDataChannel('quark-data');
+
+  dataChannel.onopen = () => {
+    console.log('[ManualP2P] DataChannel opened (Offer side)');
+  };
+  dataChannel.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      window.dispatchEvent(new CustomEvent('quark-peer-message', { detail: { peerId: 'manual-peer', msg } }));
+    } catch (e) {
+      console.error('[ManualP2P] Error handling manual message:', e);
+    }
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  await waitForIceGatheringComplete(pc);
+
+  const payload = { sdp: pc.localDescription, type: 'offer' };
+  return btoa(JSON.stringify(payload));
+}
+
+export async function acceptManualOffer(encodedOffer: string): Promise<string> {
+  const { sdp } = JSON.parse(atob(encodedOffer));
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+
+  pc.ondatachannel = (event) => {
+    const dc = event.channel;
+    dc.onopen = () => {
+      console.log('[ManualP2P] DataChannel opened (Answer side)');
+    };
+    dc.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        window.dispatchEvent(new CustomEvent('quark-peer-message', { detail: { peerId: 'manual-peer', msg } }));
+      } catch (e) {
+        console.error('[ManualP2P] Error handling manual message:', e);
+      }
+    };
+  };
+
+  await pc.setRemoteDescription(sdp);
+  const answer = await pc.createAnswer();
+  await pc.setLocalDescription(answer);
+
+  await waitForIceGatheringComplete(pc);
+
+  const payload = { sdp: pc.localDescription, type: 'answer' };
+  return btoa(JSON.stringify(payload));
+}
+
+export async function completeManualConnection(pc: RTCPeerConnection, encodedAnswer: string): Promise<void> {
+  const { sdp } = JSON.parse(atob(encodedAnswer));
+  await pc.setRemoteDescription(sdp);
+}

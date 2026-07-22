@@ -6,7 +6,7 @@ import { useChatStore } from '../../store/chatStore';
 import { FallbackSignalingDriver, SignalingDriver } from '../../lib/signaling';
 import { QuarkRoom } from '../../lib/webrtc';
 import { FileReceiver, decodeBinaryFrame } from '../../lib/fileTransfer';
-import { getMessages, saveMessage, saveFile, saveRoom, getRoom, cleanupExpiredMessages, saveOutboxMessage, getOutboxMessages, removeOutboxMessage, saveFileProgress, getFileProgress, removeFileProgress, getChannelsByRoom, createChannel, deleteChannel, updateMessageReactionsInDB } from '../../lib/storage';
+import { getMessages, saveMessage, saveFile, saveRoom, getRoom, cleanupExpiredMessages, saveOutboxMessage, getOutboxMessages, removeOutboxMessage, saveFileProgress, getFileProgress, removeFileProgress, getChannelsByRoom, createChannel, deleteChannel, dedupeDefaultChannels, updateMessageReactionsInDB } from '../../lib/storage';
 import { Message, SignalingMessage, DataChannelMessage, PeerConnectionState, Channel } from '../../types';
 import { RoomHeader } from './RoomHeader';
 import { PeerStatus } from './PeerStatus';
@@ -184,7 +184,8 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         });
       }
 
-      // 2. Load message history, channels, and outbox messages from Dexie
+      // 2. Run dedupe migration then load message history, channels, and outbox messages from Dexie
+      await dedupeDefaultChannels(roomId);
       const history = await getMessages(roomId);
       const outbox = await getOutboxMessages(roomId);
       const savedChannels = await getChannelsByRoom(roomId);
@@ -487,17 +488,20 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           await saveRoom(updatedRoom);
         }
 
-        if (isLocalHost && store.channels.length === 0) {
-          const defaultChannel: Channel = {
-            id: generateId(),
-            roomId,
-            name: 'general',
-            createdAt: Date.now(),
-            createdBy: myPeerId,
-          };
-          store.addChannel(defaultChannel);
-          await createChannel(defaultChannel);
-          store.setActiveChannel(defaultChannel.id);
+        if (isLocalHost) {
+          const existingChannels = await getChannelsByRoom(roomId);
+          if (existingChannels.length === 0) {
+            const defaultChannel: Channel = {
+              id: generateId(),
+              roomId,
+              name: 'general',
+              createdAt: Date.now(),
+              createdBy: myPeerId,
+            };
+            store.addChannel(defaultChannel);
+            await createChannel(defaultChannel);
+            store.setActiveChannel(defaultChannel.id);
+          }
         }
 
         if (msg.existingPeers && msg.existingPeers.length > 0) {

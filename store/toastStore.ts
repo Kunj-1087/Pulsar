@@ -15,13 +15,16 @@ export interface ToastItem {
   };
 }
 
+interface ToastOptions {
+  id?: string;
+  title?: string;
+  duration?: number;
+  action?: { label: string; onClick: () => void };
+}
+
 interface ToastStore {
   toasts: ToastItem[];
-  addToast: (
-    message: string,
-    type?: ToastType,
-    options?: { title?: string; duration?: number; action?: { label: string; onClick: () => void } }
-  ) => string;
+  addToast: (message: string, type?: ToastType, options?: ToastOptions) => string;
   dismissToast: (id: string) => void;
   clearToasts: () => void;
 }
@@ -29,7 +32,7 @@ interface ToastStore {
 export const useToastStore = create<ToastStore>((set) => ({
   toasts: [],
   addToast: (message, type = 'info', options = {}) => {
-    const id = Math.random().toString(36).substring(2, 9);
+    const id = options.id || Math.random().toString(36).substring(2, 9);
     const newToast: ToastItem = {
       id,
       type,
@@ -39,7 +42,15 @@ export const useToastStore = create<ToastStore>((set) => ({
       duration: options.duration,
       action: options.action,
     };
-    set((state) => ({ toasts: [...state.toasts, newToast] }));
+    set((state) => {
+      const existsIndex = state.toasts.findIndex((t) => t.id === id);
+      if (existsIndex >= 0) {
+        const next = [...state.toasts];
+        next[existsIndex] = newToast;
+        return { toasts: next };
+      }
+      return { toasts: [...state.toasts, newToast] };
+    });
     return id;
   },
   dismissToast: (id) => set((state) => ({ toasts: state.toasts.filter((t) => t.id !== id) })),
@@ -47,12 +58,13 @@ export const useToastStore = create<ToastStore>((set) => ({
 }));
 
 export const toast = {
-  info: (msg: string, opts?: { title?: string; duration?: number; action?: { label: string; onClick: () => void } }) =>
+  info: (msg: string, opts?: ToastOptions) =>
     useToastStore.getState().addToast(msg, 'info', opts),
-  success: (msg: string, opts?: { title?: string; duration?: number; action?: { label: string; onClick: () => void } }) =>
+  success: (msg: string, opts?: ToastOptions) =>
     useToastStore.getState().addToast(msg, 'success', opts),
-  warning: (msg: string, opts?: { title?: string; duration?: number; action?: { label: string; onClick: () => void } }) =>
+  warning: (msg: string, opts?: ToastOptions) =>
     useToastStore.getState().addToast(msg, 'warning', opts),
-  error: (msg: string, opts?: { title?: string; duration?: number; action?: { label: string; onClick: () => void } }) =>
+  error: (msg: string, opts?: ToastOptions) =>
     useToastStore.getState().addToast(msg, 'error', opts),
+  dismiss: (id: string) => useToastStore.getState().dismissToast(id),
 };

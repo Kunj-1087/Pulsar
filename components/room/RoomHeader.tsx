@@ -80,6 +80,20 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   const peerList = Array.from(peers.values());
   const connectedPeersCount = peerList.filter((p) => p.connectionState === 'connected').length;
 
+  let statusLabel: string;
+  let statusColor: string;
+
+  if (!isOnline) {
+    statusLabel = 'Offline — viewing local history';
+    statusColor = '#525252';
+  } else if (connectedPeersCount === 0) {
+    statusLabel = 'No peers connected';
+    statusColor = '#a3a3a3';
+  } else {
+    statusLabel = `Connected — ${connectedPeersCount} peer${connectedPeersCount > 1 ? 's' : ''}`;
+    statusColor = '#E50914';
+  }
+
   return (
     <>
       <header className="h-[52px] bg-surface border-b border-border px-4 flex items-center justify-between select-none shrink-0 font-sans z-30 relative">
@@ -148,25 +162,19 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
 
         {/* RIGHT SECTION */}
         <div className="flex items-center gap-3">
-          {/* Network & Peer Connectivity Badge */}
-          {!isOnline ? (
-            <div className="flex items-center gap-1.5 bg-elevated border border-border px-2 py-0.5 rounded text-[11px] font-sans text-text-secondary">
-              <WifiOff className="w-3 h-3 text-text-muted shrink-0" />
-              <span className="hidden sm:inline">Offline — viewing local history</span>
-              <span className="sm:hidden">Offline</span>
-            </div>
-          ) : connectedPeersCount === 0 ? (
-            <div className="flex items-center gap-1.5 bg-elevated/60 border border-border px-2 py-0.5 rounded text-[11px] font-sans text-text-muted">
-              <span className="w-1.5 h-1.5 rounded-full bg-text-muted shrink-0" />
-              <span className="hidden sm:inline">No peers connected</span>
-              <span className="sm:hidden">0 peers</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 bg-accent-muted/40 border border-accent-muted px-2 py-0.5 rounded text-[11px] font-sans text-text-primary">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />
-              <span>Connected — {connectedPeersCount} {connectedPeersCount === 1 ? 'peer' : 'peers'}</span>
-            </div>
-          )}
+          {/* Network & Peer Connectivity Badge (Step 6) */}
+          <div className="flex items-center gap-2 font-mono text-xs">
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: statusColor }}
+            />
+            <span className="hidden sm:inline" style={{ color: statusColor }}>
+              {statusLabel}
+            </span>
+            <span className="sm:hidden" style={{ color: statusColor }}>
+              {!isOnline ? 'Offline' : connectedPeersCount === 0 ? 'No peers' : `${connectedPeersCount} peer${connectedPeersCount > 1 ? 's' : ''}`}
+            </span>
+          </div>
 
           {/* User Identity */}
           {identity && (

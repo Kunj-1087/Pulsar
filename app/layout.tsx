@@ -5,7 +5,7 @@ import { GlobalListener } from '../components/GlobalListener';
 import { ToastContainer } from '../components/ui/ToastContainer';
 import { OfflineBanner } from '../components/OfflineBanner';
 import { PWAInstallPrompt } from '../components/PWAInstallPrompt';
-import { UpdateToast } from '../components/ui/UpdateToast';
+import UpdateToast from '../components/ui/UpdateToast';
 
 export const metadata: Metadata = {
   title: "Quark — Chat without the middle",
