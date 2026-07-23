@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { isValidRoomCode } from '../../lib/roomCode';
+import { fetchLanIP, buildInviteUrl } from '../../lib/lanDiscovery';
 import { StarfieldBackground } from './StarfieldBackground';
 
 export const RoomCreator: React.FC = () => {
@@ -20,6 +22,28 @@ export const RoomCreator: React.FC = () => {
   const [createError, setCreateError] = useState<string | null>(null);
   const [joinError, setJoinError] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(false);
+
+  const [createdRoomId, setCreatedRoomId] = useState<string>('');
+  const [inviteUrl, setInviteUrl] = useState<string>('');
+  const [lanError, setLanError] = useState<string>('');
+  const [lanLoading, setLanLoading] = useState<boolean>(false);
+  const [copied, setCopied] = useState<boolean>(false);
+
+  async function resolveInviteUrl(code: string) {
+    setLanLoading(true);
+    const lan = await fetchLanIP();
+    setLanLoading(false);
+
+    if (!lan.available) {
+      setLanError(lan.error ?? 'LAN unavailable');
+      // Still build a localhost URL as fallback for same-machine testing
+      setInviteUrl(`http://localhost:3000/room/${code}`);
+      return;
+    }
+
+    setLanError('');
+    setInviteUrl(buildInviteUrl(lan.ip, code));
+  }
 
   // Monitor connectivity state
   useEffect(() => {
@@ -78,7 +102,8 @@ export const RoomCreator: React.FC = () => {
 
       const data = await res.json();
       if (data.roomId) {
-        router.push(`/room/${data.roomId}`);
+        setCreatedRoomId(data.roomId);
+        await resolveInviteUrl(data.roomId);
       } else {
         throw new Error('No roomId received');
       }
@@ -171,24 +196,79 @@ export const RoomCreator: React.FC = () => {
             </div>
           )}
 
-          {/* Create Room Form */}
-          <form onSubmit={handleCreateRoom} className="space-y-3">
-            <h2 className="type-uppercase-label text-fg-secondary">
-              New room
-            </h2>
-            <Button
-              type="submit"
-              size="lg"
-              className="bg-gradient-to-b from-[#E84A58] to-[var(--accent-pulsar)] hover:from-[var(--accent-pulsar)] hover:to-[var(--accent-pulsar-hover)] w-full shadow-[var(--btn-glow)] hover:shadow-[var(--btn-glow-hover)] transition-all duration-200"
-              loading={isCreating}
-              disabled={isJoining || isOffline}
-            >
-              Create room
-            </Button>
-            {createError && (
-              <p className="text-xs font-mono text-redshift mt-1">{createError}</p>
-            )}
-          </form>
+          {/* Room Created Share UI for Host */}
+          {createdRoomId ? (
+            <div className="p-4 bg-void rounded-md space-y-4 border border-[var(--card-border)] text-center">
+              <h2 className="type-uppercase-label text-fg-secondary">
+                Room created. Share this link:
+              </h2>
+              {lanLoading ? (
+                <div className="flex items-center justify-center gap-2 text-fg-secondary py-2 font-mono text-xs">
+                  <span className="animate-spin">🌀</span>
+                  <span>Detecting network...</span>
+                </div>
+              ) : (
+                <>
+                  {lanError && (
+                    <p className="text-[var(--accent)] text-xs font-mono mb-2">{lanError}</p>
+                  )}
+                  <div className="p-2 bg border border-border rounded text-fg-primary font-mono text-xs break-all select-all">
+                    {inviteUrl}
+                  </div>
+                  <div className="flex justify-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        navigator.clipboard.writeText(inviteUrl);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                    >
+                      {copied ? 'Copied!' : 'Copy Link'}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => router.push(`/room/${createdRoomId}`)}
+                    >
+                      Enter Room
+                    </Button>
+                  </div>
+                  {inviteUrl && (
+                    <div className="flex flex-col items-center justify-center pt-2">
+                      <div className="bg-white p-3 rounded">
+                        <QRCodeSVG value={inviteUrl} size={140} bgColor="#FFFFFF" fgColor="#000000" level="M" />
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-fg-secondary text-[11px] font-sans pt-1">
+                    ⚠ Everyone must be on the same WiFi
+                  </p>
+                </>
+              )}
+            </div>
+          ) : (
+            /* Create Room Form */
+            <form onSubmit={handleCreateRoom} className="space-y-3">
+              <h2 className="type-uppercase-label text-fg-secondary">
+                New room
+              </h2>
+              <Button
+                type="submit"
+                size="lg"
+                className="bg-gradient-to-b from-[#E84A58] to-[var(--accent-pulsar)] hover:from-[var(--accent-pulsar)] hover:to-[var(--accent-pulsar-hover)] w-full shadow-[var(--btn-glow)] hover:shadow-[var(--btn-glow-hover)] transition-all duration-200"
+                loading={isCreating}
+                disabled={isJoining || isOffline}
+              >
+                Create room
+              </Button>
+              {createError && (
+                <p className="text-xs font-mono text-redshift mt-1">{createError}</p>
+              )}
+            </form>
+          )}
 
           {/* Section divider line */}
           <div className="h-px bg-gradient-to-r from-transparent via-pulsar/15 to-transparent" />

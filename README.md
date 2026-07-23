@@ -63,6 +63,49 @@ Once step 3 completes, signaling channels are torn down, and communication is 10
 
 ---
 
+## Running Quark on a Local Network (No Internet Required)
+
+Quark works entirely on your local WiFi. No internet needed.
+
+### Setup (takes 30 seconds)
+
+**One person on the team does this on their laptop:**
+
+1. Clone the repo and install dependencies:
+   ```bash
+   git clone https://github.com/kunjnakrani/quark.git
+   cd quark
+   npm install
+   ```
+
+2. Start the signaling server:
+   ```bash
+   npm run signal
+   ```
+
+3. In a second terminal, start the app:
+   ```bash
+   npm run dev
+   ```
+
+4. Look at the terminal output. You will see:
+   ```
+   Network:   http://192.168.1.5:3000   ← share this
+   ```
+
+5. Share that Network URL with everyone in the room.
+   They open it in their browser. That's it.
+
+### Requirements
+- Everyone must be connected to the **same WiFi network**
+- The person who ran the setup must keep their laptop open and terminal running
+- No internet connection needed once everyone has joined
+
+### How it works
+When you create a room, Quark generates a link that contains your machine's local network address. When others open that link, they load the app directly from your machine and connect peer-to-peer. After the initial connection, all messages and files go directly between devices — your laptop is only needed for new people to join.
+
+---
+
 ## Offline LAN Mode
 
 Quark can run entirely without internet connectivity on a local network (LAN, WiFi hotspot, or ad-hoc network).

@@ -13,6 +13,46 @@ const { WebSocketServer } = require('ws');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
+const os = require('os');
+
+function getLanIP() {
+  const interfaces = os.networkInterfaces();
+  const candidates = [];
+
+  for (const name of Object.keys(interfaces)) {
+    // Skip virtual adapters by name
+    const nameLower = name.toLowerCase();
+    if (
+      nameLower.includes('vmware') ||
+      nameLower.includes('virtualbox') ||
+      nameLower.includes('docker') ||
+      nameLower.includes('vethernet') ||
+      nameLower.includes('loopback')
+    ) continue;
+
+    for (const iface of interfaces[name]) {
+      // IPv4 only, not internal loopback
+      if (iface.family !== 'IPv4' || iface.internal) continue;
+
+      const ip = iface.address;
+
+      // Skip link-local (APIPA — means no DHCP assigned)
+      if (ip.startsWith('169.254.')) continue;
+
+      // Skip Docker bridge range
+      if (ip.startsWith('172.17.') || ip.startsWith('172.18.')) continue;
+
+      // Prefer 192.168.x.x (home/office WiFi) first
+      if (ip.startsWith('192.168.')) {
+        candidates.unshift({ ip, name }); // push to front
+      } else {
+        candidates.push({ ip, name }); // 10.x.x.x etc go to back
+      }
+    }
+  }
+
+  return candidates.length > 0 ? candidates[0].ip : '127.0.0.1';
+}
 
 const OFFLINE_MODE = process.env.OFFLINE_MODE === 'true';
 
@@ -111,55 +151,46 @@ class RollingWindowLimiter {
   }
 }
 
-// Create HTTP or HTTPS server
-let server;
-if (HTTPS_ENABLED) {
-  if (!fs.existsSync(TLS_CERT_PATH) || !fs.existsSync(TLS_KEY_PATH)) {
-    console.error(`[Quark] HTTPS_ENABLED=true but certificate files missing:`);
-    console.error(`  Cert: ${TLS_CERT_PATH}`);
-    console.error(`  Key:  ${TLS_KEY_PATH}`);
-    console.error('[Quark] Please generate self-signed certificates or provide valid paths.');
-    process.exit(1);
-  }
-  
-  const certOptions = {
-    cert: fs.readFileSync(TLS_CERT_PATH, 'utf-8'),
-    key: fs.readFileSync(TLS_KEY_PATH, 'utf-8'),
-  };
-  server = https.createServer(certOptions, (req, res) => {
-    if (req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        ok: true,
-        rooms: rooms.size,
-        uptime: process.uptime(),
-        connections: totalConnectedSockets,
-      }));
-      return;
-    }
-    res.writeHead(426, { 'Content-Type': 'text/plain' });
-    res.end('Upgrade Required — WebSocket only');
-  });
-  console.log('[Quark] HTTPS mode enabled');
-} else {
-  server = http.createServer((req, res) => {
-    if (req.url === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        ok: true,
-        rooms: rooms.size,
-        uptime: process.uptime(),
-        connections: totalConnectedSockets,
-      }));
-      return;
-    }
-    res.writeHead(426, { 'Content-Type': 'text/plain' });
-    res.end('Upgrade Required — WebSocket only');
-  });
-  console.log('[Quark] HTTP mode enabled');
-}
+const LAN_IP = getLanIP();
+const PORT = SIGNALING_PORT || 8080;
 
-const wss = new WebSocketServer({ server });
+// Create HTTP server that also handles WebSocket upgrades
+const httpServer = http.createServer((req, res) => {
+  // CORS headers so browser can call this from any origin on the LAN
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  if (req.url === '/local-ip' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ip: LAN_IP }));
+    return;
+  }
+
+  if (req.url === '/health' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      ok: true,
+      rooms: typeof rooms !== 'undefined' ? rooms.size : 0,
+      uptime: process.uptime(),
+      connections: typeof totalConnectedSockets !== 'undefined' ? totalConnectedSockets : 0,
+    }));
+    return;
+  }
+
+  // All other HTTP requests: 404
+  res.writeHead(404);
+  res.end('Not found');
+});
+
+const server = httpServer;
+const wss = new WebSocketServer({ server: httpServer });
 
 // rooms: Map<roomId, Set<WebSocket>>
 const rooms = new Map();
@@ -457,11 +488,24 @@ server.on('close', () => {
   clearInterval(cleanupInterval);
 });
 
-// Bind to 0.0.0.0 (all interfaces) so it's reachable from other devices on the LAN
-const protocol = HTTPS_ENABLED ? 'wss' : 'ws';
-server.listen(SIGNALING_PORT, '0.0.0.0', () => {
-  const mode = OFFLINE_MODE ? 'OFFLINE' : 'ONLINE';
-  console.log(`[Quark] Signaling server (${mode} mode) running on ${protocol}://0.0.0.0:${SIGNALING_PORT}`);
-  console.log(`[Quark] Health check: http://localhost:${SIGNALING_PORT}/health`);
-  console.log(`[Quark] Rate limits - Conn: ${IP_CONN_LIMIT}/min, Join: ${IP_JOIN_LIMIT}/min, Msg: ${SOCKET_MSG_LIMIT}/sec`);
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log('');
+  console.log('  ██████╗ ██╗   ██╗ █████╗ ██████╗ ██╗  ██╗');
+  console.log('  ██╔═══██╗██║   ██║██╔══██╗██╔══██╗██║ ██╔╝');
+  console.log('  ██║   ██║██║   ██║███████║██████╔╝█████╔╝ ');
+  console.log('  ██║▄▄ ██║██║   ██║██╔══██║██╔══██╗██╔═██╗ ');
+  console.log('  ╚██████╔╝╚██████╔╝██║  ██║██║  ██║██║  ██╗');
+  console.log('   ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝');
+  console.log('');
+  console.log('  ─────────────────────────────────────────────');
+  console.log(`  Local:     http://localhost:3000`);
+  console.log(`  Network:   http://${LAN_IP}:3000   ← share this`);
+  console.log('  ─────────────────────────────────────────────');
+  console.log(`  Signaling: ws://${LAN_IP}:${PORT}`);
+  console.log('');
+  if (LAN_IP === '127.0.0.1') {
+    console.log('  ⚠  WARNING: No LAN IP detected. LAN mode unavailable.');
+    console.log('     Make sure you are connected to a WiFi or Ethernet network.');
+  }
+  console.log('');
 });

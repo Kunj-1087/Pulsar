@@ -1,9 +1,22 @@
 import { SignalingMessage } from '../types';
-import { getSignalingUrl } from './utils';
 import { toast } from '../store/toastStore';
 
 type MessageHandler = (msg: SignalingMessage) => void;
 type StateChangeHandler = (state: 'connected' | 'disconnected' | 'reconnecting' | 'failed') => void;
+
+function getSignalingUrl(): string {
+  // In a browser environment, derive the signaling URL from the current page's hostname.
+  // This means if the user loaded the app from http://192.168.1.5:3000,
+  // signaling automatically points to ws://192.168.1.5:8080.
+  // If loaded from localhost, it points to ws://localhost:8080.
+  // This requires zero configuration from the user.
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    return `ws://${hostname}:8080`;
+  }
+  // SSR fallback — not used in practice since signaling is client-only
+  return process.env.NEXT_PUBLIC_SIGNALING_WS_URL ?? 'ws://localhost:8080';
+}
 
 export class QuarkSignaling {
   private ws: WebSocket | null = null;
@@ -22,12 +35,7 @@ export class QuarkSignaling {
 
   constructor(peerId: string) {
     this.peerId = peerId;
-    this.url =
-      process.env.NEXT_PUBLIC_SIGNALING_WS_URL ||
-      (() => {
-        try { return getSignalingUrl(); } catch { return null; }
-      })() ||
-      'ws://localhost:8080';
+    this.url = getSignalingUrl();
     console.log('[Signaling] Using URL:', this.url);
   }
 

@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Copy, Check, QrCode, Share2, Users, MoreVertical, Menu, WifiOff, QrCode as QrIcon } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
 import { useNetworkStatus } from '../../lib/useNetworkStatus';
+import { fetchLanIP, buildInviteUrl, isJoiner } from '../../lib/lanDiscovery';
 
 interface RoomHeaderProps {
   roomId: string;
@@ -28,8 +29,24 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   const [showDropdown, setShowDropdown] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [identity, setIdentity] = useState<{ handle: string; peerColor: string } | null>(null);
+  const [inviteUrl, setInviteUrl] = useState<string>('');
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (isJoiner()) {
+      setInviteUrl(window.location.href);
+    } else {
+      setInviteUrl(`${window.location.origin}/room/${roomId}`);
+      fetchLanIP().then((lan) => {
+        if (lan.available) {
+          setInviteUrl(buildInviteUrl(lan.ip, roomId));
+        }
+      }).catch(() => {});
+    }
+  }, [roomId]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -60,8 +77,8 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   };
 
   const handleShareLink = () => {
-    const inviteUrl = `${window.location.origin}/room/${roomId}`;
-    navigator.clipboard.writeText(inviteUrl);
+    const urlToCopy = inviteUrl || (typeof window !== 'undefined' ? `${window.location.origin}/room/${roomId}` : '');
+    navigator.clipboard.writeText(urlToCopy);
     setCopiedLink(true);
     setShowDropdown(false);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -258,7 +275,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             <h3 className="text-text-primary font-bold text-base">Scan Room QR</h3>
             <div className="bg-white p-3 rounded">
               <QRCodeSVG
-                value={`${typeof window !== 'undefined' ? window.location.origin : ''}/room/${roomId}`}
+                value={inviteUrl || (typeof window !== 'undefined' ? `${window.location.origin}/room/${roomId}` : '')}
                 size={160}
                 bgColor="#FFFFFF"
                 fgColor="#000000"

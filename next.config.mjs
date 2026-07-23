@@ -12,6 +12,21 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['ably'],
   },
+  // Allow the app to be accessed from any host (required for LAN mode)
+  // Without this, Next.js blocks requests from non-localhost origins
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'X-Frame-Options',
+            value: 'SAMEORIGIN',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 const pwaConfig = withPWA({
