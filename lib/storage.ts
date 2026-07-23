@@ -377,3 +377,17 @@ export async function updateMessageReactionsInDB(messageId: string, emoji: strin
     console.error('Failed to update reactions in DB:', error);
   }
 }
+
+export function setLastChannel(roomId: string, channelId: string): void {
+  try {
+    localStorage.setItem(`quark_last_channel_${roomId}`, channelId);
+  } catch {}
+}
+
+export function getLastChannel(roomId: string): string | null {
+  try {
+    return localStorage.getItem(`quark_last_channel_${roomId}`);
+  } catch {
+    return null;
+  }
+}

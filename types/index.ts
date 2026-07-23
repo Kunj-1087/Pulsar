@@ -52,7 +52,7 @@ export interface FileRef {
 
 export type RoomConnectionStatus = 'idle' | 'signaling' | 'connecting' | 'connected' | 'degraded' | 'reconnecting' | 'failed' | 'closing' | 'closed';
 
-export type PeerConnectionState = 'new' | 'negotiating' | 'connected' | 'disconnected' | 'failed' | 'closed';
+export type PeerConnectionState = 'new' | 'negotiating' | 'connected' | 'disconnected' | 'failed' | 'closed' | 'grace';
 
 export interface Peer {
   peerId: string;
@@ -82,6 +82,8 @@ export type DataChannelMessage =
   | { type: 'file-complete'; id: string; protocolVersion?: number; seq?: number }
   | { type: 'file-cancel'; id: string; reason?: string; protocolVersion?: number; seq?: number }
   | { type: 'typing'; senderId: string; displayName: string; isTyping: boolean; protocolVersion?: number; seq?: number }
+  | { type: 'peer-typing'; peerId: string; handle: string; channelId: string; ts: number; protocolVersion?: number; seq?: number }
+  | { type: 'peer-leave'; peerId: string; handle?: string; protocolVersion?: number; seq?: number }
   | { type: 'peer-info'; peerId: string; displayName: string; handle?: string; peerColor?: string; protocolVersion?: number; seq?: number }
   | { type: 'key-exchange'; publicKey: JsonWebKey; protocolVersion?: number; seq?: number }
   | { type: 'channel-create'; channel: Channel; protocolVersion?: number; seq?: number }
@@ -95,10 +97,13 @@ export type SignalingMessage =
   | { type: 'answer'; sdp: RTCSessionDescriptionInit; fromPeer: string; toPeer: string }
   | { type: 'ice-candidate'; candidate: RTCIceCandidateInit; fromPeer: string; toPeer: string }
   | { type: 'peer-joined'; peerId: string }
+  | { type: 'peer-rejoin'; peerId: string; roomId: string; handle?: string }
   | { type: 'peer-left'; peerId: string }
+  | { type: 'leave'; peerId: string; roomId: string }
   | { type: 'room-created'; roomId: string }
   | { type: 'room-joined'; roomId: string; existingPeers: string[] }
-  | { type: 'join-room'; roomId: string; peerId: string }
+  | { type: 'join-room'; roomId: string; peerId: string; isHost?: boolean }
+  | { type: 'room-not-found'; roomId: string }
   | { type: 'error'; message: string };
 
 export interface ConnectionStats {

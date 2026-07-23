@@ -18,6 +18,14 @@ function getSignalingUrl(): string {
   return process.env.NEXT_PUBLIC_SIGNALING_WS_URL ?? 'ws://localhost:8080';
 }
 
+let activeSignalingInstance: QuarkSignaling | null = null;
+
+export function sendLeaveSignal(): void {
+  if (activeSignalingInstance) {
+    activeSignalingInstance.leaveRoom();
+  }
+}
+
 export class QuarkSignaling {
   private ws: WebSocket | null = null;
   private messageHandler: MessageHandler | null = null;
@@ -36,6 +44,7 @@ export class QuarkSignaling {
   constructor(peerId: string) {
     this.peerId = peerId;
     this.url = getSignalingUrl();
+    activeSignalingInstance = this;
     console.log('[Signaling] Using URL:', this.url);
   }
 
@@ -94,12 +103,17 @@ export class QuarkSignaling {
       this.ws.onopen = () => {
         clearTimeout(openTimeout);
         this.isConnecting = false;
+        const isReconnect = this.reconnectAttempts > 0;
         this.reconnectAttempts = 0; // reset backoff on success
         console.log('[Signaling] Connected');
         this.setStatus('connected');
 
         if (this.roomId) {
-          this.send({ type: 'join-room', roomId: this.roomId, peerId: this.peerId });
+          if (isReconnect) {
+            this.send({ type: 'peer-rejoin', peerId: this.peerId, roomId: this.roomId });
+          } else {
+            this.send({ type: 'join-room', roomId: this.roomId, peerId: this.peerId });
+          }
         }
         resolve();
       };
@@ -157,10 +171,16 @@ export class QuarkSignaling {
     }, delay);
   }
 
-  joinRoom(roomId: string): void {
+  joinRoom(roomId: string, isHost?: boolean): void {
     this.roomId = roomId;
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.send({ type: 'join-room', roomId, peerId: this.peerId });
+      this.send({ type: 'join-room', roomId, peerId: this.peerId, isHost });
+    }
+  }
+
+  leaveRoom(): void {
+    if (this.roomId && this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.send({ type: 'leave', peerId: this.peerId, roomId: this.roomId });
     }
   }
 
@@ -199,7 +219,7 @@ export type SignalingStatus = 'connected' | 'disconnected' | 'reconnecting' | 'f
 
 export interface SignalingDriver {
   connect(): Promise<void>;
-  joinRoom(roomId: string): void | Promise<void>;
+  joinRoom(roomId: string, isHost?: boolean): void | Promise<void>;
   disconnect(): void;
   send(msg: SignalingMessage): void;
   onMessage(handler: (msg: SignalingMessage) => void): void;

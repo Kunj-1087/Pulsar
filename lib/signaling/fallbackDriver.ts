@@ -87,10 +87,10 @@ export class FallbackSignalingDriver {
     }
   }
 
-  async joinRoom(roomId: string): Promise<void> {
+  async joinRoom(roomId: string, isHost?: boolean): Promise<void> {
     this.roomId = roomId;
     if (this.activeDriver === 'primary') {
-      this.primary.joinRoom(roomId);
+      this.primary.joinRoom(roomId, isHost);
     } else if (this.activeDriver === 'fallback' && this.fallback) {
       await this.fallback.joinRoom(roomId);
     } else {

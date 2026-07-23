@@ -5,11 +5,12 @@ import { Paperclip, Send, X, File, FileImage, FileText } from 'lucide-react';
 import { formatBytes } from '../../lib/utils';
 import { toast } from '../../store/toastStore';
 import { useChatStore } from '../../store/chatStore';
+import { broadcastTyping } from '../../lib/webrtc';
 
 interface MessageInputProps {
   onSendMessage: (text: string, disappearAfterMs?: number) => void;
   onSendFile: (file: File) => void;
-  onTyping: (isTyping: boolean) => void;
+  onTyping?: (isTyping: boolean) => void;
   disabled?: boolean;
   roomId: string;
 }
@@ -29,8 +30,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isTypingRef = useRef(false);
+  const lastTypingBroadcastRef = useRef<number>(0);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId);
   const activeChannelName = activeChannel ? activeChannel.name : 'general';
@@ -66,34 +66,21 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     if (val.length <= MAX_CHAR_LIMIT) {
       setText(val);
 
-      if (val === '') {
-        if (isTypingRef.current) {
-          isTypingRef.current = false;
-          onTyping(false);
+      if (val.trim() !== '') {
+        const now = Date.now();
+        if (now - lastTypingBroadcastRef.current >= 1500) {
+          lastTypingBroadcastRef.current = now;
+          broadcastTyping(activeChannelId || '');
         }
-        if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-          typingTimeoutRef.current = null;
-        }
-      } else {
-        if (!isTypingRef.current) {
-          isTypingRef.current = true;
-          onTyping(true);
-        }
-
-        if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-        }
-
-        typingTimeoutRef.current = setTimeout(() => {
-          isTypingRef.current = false;
-          onTyping(false);
-        }, 1500);
       }
     }
   };
 
+  const canSend = !disabled && (!!text.trim() || !!selectedFile);
+
   const handleSend = () => {
+    if (!canSend) return;
+
     const trimmed = text.trim();
 
     if (selectedFile && !disabled) {
@@ -105,14 +92,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     if (trimmed && !disabled) {
       onSendMessage(trimmed);
       setText('');
-
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = null;
-      }
-      isTypingRef.current = false;
-      onTyping(false);
-
       textareaRef.current?.focus();
     }
 
@@ -124,7 +103,9 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (canSend) {
+        handleSend();
+      }
     }
   };
 
@@ -154,8 +135,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     setSelectedFile(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-
-  const canSend = !disabled && (!!text.trim() || !!selectedFile);
 
   return (
     <div className="bg-surface border-t border-border flex flex-col font-sans select-none shrink-0">

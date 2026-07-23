@@ -11,13 +11,15 @@ import { updateMessageReactionsInDB } from '../../lib/storage';
 
 interface MessageBubbleProps {
   message: Message;
-  showSender: boolean;
+  isFirstInGroup?: boolean;
+  showSender?: boolean;
   isGroupHovered?: boolean;
   shouldAnimate?: boolean;
 }
 
 export const MessageBubble: React.FC<MessageBubbleProps> = ({
   message,
+  isFirstInGroup,
   showSender,
 }) => {
   const { peers, setReplyingTo, myPeerId, activeChannelId, updateMessageReactions } = useChatStore();
@@ -25,6 +27,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
 
   const [showPicker, setShowPicker] = useState(false);
   const smileRef = useRef<HTMLButtonElement>(null);
+
+  const firstInGroup = isFirstInGroup ?? showSender ?? true;
 
   // Resolve handle and peer color
   let senderHandle = sender;
@@ -108,24 +112,26 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       {message.replyTo && (
         <div
           onClick={handleReplyClick}
-          className="ml-[18px] mb-1 cursor-pointer border-l-2 border-accent-muted bg-accent-muted/50 px-2 py-0.5 rounded text-xs text-text-secondary max-w-xl truncate hover:brightness-110 transition-all select-none"
+          className="ml-[28px] mb-1 cursor-pointer border-l-2 border-accent-muted bg-accent-muted/50 px-2 py-0.5 rounded text-xs text-text-secondary max-w-xl truncate hover:brightness-110 transition-all select-none"
         >
           @{message.replyTo.senderHandle}: {message.replyTo.preview.substring(0, 60)}
         </div>
       )}
 
-      {/* Header row (showSender = true) or indented continuation */}
-      {showSender ? (
-        <div className="flex items-center gap-2 mb-0.5">
-          {/* 8px colored dot */}
-          <span
-            className="w-2 h-2 rounded-full shrink-0"
-            style={{ backgroundColor: senderColor }}
-          />
-          {/* Sender handle */}
-          <span className="text-[13px] font-semibold text-text-primary">
-            @{senderHandle}
-          </span>
+      {/* Header row (firstInGroup = true) or indented continuation */}
+      {firstInGroup ? (
+        <div className="flex items-center justify-between gap-2 mb-0.5">
+          <div className="flex items-center gap-2">
+            {/* 8px colored dot */}
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: senderColor }}
+            />
+            {/* Sender handle */}
+            <span className="text-[13px] font-semibold text-text-primary">
+              @{senderHandle}
+            </span>
+          </div>
           {/* Timestamp */}
           <span className="font-mono text-[11px] text-text-muted">
             {formatTime(ts)}
@@ -134,7 +140,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
       ) : null}
 
       {/* Content wrapper */}
-      <div className={showSender ? "ml-[18px]" : "ml-[18px]"}>
+      <div className={firstInGroup ? "ml-[28px]" : "ml-[28px] relative"}>
+        {!firstInGroup && (
+          <span className="absolute -left-[28px] top-0 font-mono text-[11px] text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
+            {formatTime(ts)}
+          </span>
+        )}
         {type === 'file' && fileRef ? (
           <div className="flex flex-col gap-2 my-1">
             {fileRef.mimeType.startsWith('image/') && fileRef.blob && (

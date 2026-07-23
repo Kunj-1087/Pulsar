@@ -6,7 +6,7 @@ import { useChatStore } from '../../store/chatStore';
 import { FallbackSignalingDriver, SignalingDriver } from '../../lib/signaling';
 import { QuarkRoom } from '../../lib/webrtc';
 import { FileReceiver, decodeBinaryFrame } from '../../lib/fileTransfer';
-import { getMessages, saveMessage, saveFile, saveRoom, getRoom, cleanupExpiredMessages, saveOutboxMessage, getOutboxMessages, removeOutboxMessage, saveFileProgress, getFileProgress, removeFileProgress, getChannelsByRoom, createChannel, deleteChannel, dedupeDefaultChannels, updateMessageReactionsInDB } from '../../lib/storage';
+import { getMessages, saveMessage, saveFile, saveRoom, getRoom, cleanupExpiredMessages, saveOutboxMessage, getOutboxMessages, removeOutboxMessage, saveFileProgress, getFileProgress, removeFileProgress, getChannelsByRoom, createChannel, deleteChannel, dedupeDefaultChannels, updateMessageReactionsInDB, getLastChannel } from '../../lib/storage';
 import { Message, SignalingMessage, DataChannelMessage, PeerConnectionState, Channel } from '../../types';
 import { RoomHeader } from './RoomHeader';
 import { PeerStatus } from './PeerStatus';
@@ -15,9 +15,12 @@ import { MessageInput } from './MessageInput';
 import { ChannelSidebar } from './ChannelSidebar';
 import { MembersList } from './MembersList';
 import { ManualPairingModal } from './ManualPairingModal';
+import RoomNotFound from './RoomNotFound';
 import { toast } from '../../store/toastStore';
 import { X } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { broadcastLeave } from '../../lib/webrtc';
+import { sendLeaveSignal } from '../../lib/signaling';
 
 interface ChatWindowProps {
   roomId: string;
@@ -32,6 +35,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
   const [showManualPairing, setShowManualPairing] = useState(false);
   const [showChannelSidebar, setShowChannelSidebar] = useState(false);
   const [showMembersList, setShowMembersList] = useState(false);
+  const [isRoomNotFound, setIsRoomNotFound] = useState(false);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -195,7 +199,14 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         store.setOutboxPendingIds(outbox.map((o) => o.id));
         if (savedChannels.length > 0) {
           savedChannels.forEach((ch) => store.addChannel(ch));
-          store.setActiveChannel(savedChannels[0].id);
+          const lastChannelId = getLastChannel(roomId);
+          const channelExists = savedChannels.some((c) => c.id === lastChannelId);
+          if (lastChannelId && channelExists) {
+            store.setActiveChannel(lastChannelId);
+          } else {
+            const general = savedChannels.find((c) => c.name === 'general');
+            store.setActiveChannel(general ? general.id : savedChannels[0].id);
+          }
         }
       }
 
@@ -354,7 +365,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
             store.setRoomStatus('connecting');
           }
 
-          signalingRef.current?.joinRoom(roomId);
+          signalingRef.current?.joinRoom(roomId, isHost);
         } else if (state === 'reconnecting') {
           toast.warning('Signaling connection lost. Reconnecting…', { id: 'signaling-status' });
         } else if (state === 'disconnected') {
@@ -373,7 +384,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
 
       try {
         await signaling.connect();
-        await signaling.joinRoom(roomId);
+        await signaling.joinRoom(roomId, isHost);
         store.setSignalingDriverName(signaling.getActiveDriverName());
       } catch (err) {
         console.error('Signaling connection failure:', err);
@@ -441,6 +452,26 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, myPeerId]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      broadcastLeave();
+      sendLeaveSignal();
+    };
+
+    const handleBeforeUnload = () => {
+      broadcastLeave();
+      sendLeaveSignal();
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   // Signaling Relayer logic
   const handleIncomingSignaling = async (msg: SignalingMessage) => {
@@ -579,6 +610,12 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
           ts: Date.now(),
           isOwn: false,
         });
+        break;
+
+      case 'room-not-found':
+        setIsRoomNotFound(true);
+        store.setRoomStatus('failed');
+        signalingRef.current?.disconnect();
         break;
 
       case 'error':
@@ -1113,6 +1150,10 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
     (p) => p.connectionState === 'failed' || p.connectionState === 'closed'
   );
 
+  if (isRoomNotFound) {
+    return <RoomNotFound roomCode={roomId} />;
+  }
+
   return (
     <div className="flex flex-col h-screen bg-base overflow-hidden select-none">
       <RoomHeader
@@ -1133,7 +1174,7 @@ export const ChatWindow: React.FC<ChatWindowProps> = ({ roomId }) => {
         {showChannelSidebar && (
           <div className="md:hidden fixed inset-0 z-40 flex">
             <div className="w-60 bg-surface h-full border-r border-border shadow-2xl z-50">
-              <ChannelSidebar />
+              <ChannelSidebar onChannelSelect={() => setShowChannelSidebar(false)} />
             </div>
             <div
               className="flex-1 bg-black/60 backdrop-blur-sm"

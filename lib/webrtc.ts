@@ -39,6 +39,46 @@ export function broadcastChannelDelete(channelId: string) {
   }
 }
 
+export function broadcastTyping(channelId: string): void {
+  if (activeRoomInstance) {
+    let handle = 'Peer';
+    try {
+      const saved = localStorage.getItem('quark_identity');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.handle) handle = parsed.handle;
+      }
+    } catch {}
+    activeRoomInstance.broadcast({
+      type: 'peer-typing',
+      peerId: activeRoomInstance.myId,
+      handle,
+      channelId,
+      ts: Date.now(),
+    });
+  }
+}
+
+export function broadcastLeave(): void {
+  if (activeRoomInstance) {
+    let handle = 'Peer';
+    try {
+      const saved = localStorage.getItem('quark_identity');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.handle) handle = parsed.handle;
+      }
+    } catch {}
+    activeRoomInstance.broadcast({
+      type: 'peer-leave',
+      peerId: activeRoomInstance.myId,
+      handle,
+    });
+    activeRoomInstance.close();
+    useChatStore.getState().reset();
+  }
+}
+
 export class QuarkPeer {
   peerConnection!: RTCPeerConnection;
   dataChannel: RTCDataChannel | null = null;
@@ -198,7 +238,12 @@ export class QuarkPeer {
       const iceState = this.peerConnection.iceConnectionState;
       this.onIceLog(`[ICE State] ICE connection state: ${iceState}`);
       
-      if (iceState === 'failed') {
+      if (iceState === 'disconnected') {
+        useChatStore.getState().startPeerGraceTimer(this.peerId);
+      } else if (iceState === 'connected' || iceState === 'completed') {
+        useChatStore.getState().cancelPeerGraceTimer(this.peerId);
+      } else if (iceState === 'failed') {
+        useChatStore.getState().cancelPeerGraceTimer(this.peerId);
         this.handleIceFailure();
       }
     };
@@ -792,7 +837,7 @@ export class QuarkPeer {
 export class QuarkRoom {
   peers: Map<string, QuarkPeer> = new Map();
   private pendingCandidates: Map<string, RTCIceCandidateInit[]> = new Map();
-  private myId: string;
+  public myId: string;
   private onSignal: (msg: SignalingMessage) => void;
   private onPeerMessage: (peerId: string, msg: DataChannelMessage) => void;
   private onPeerBinaryMessage: (peerId: string, msg: ArrayBuffer) => void;

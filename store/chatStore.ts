@@ -38,9 +38,14 @@ interface ChatStore {
   roomStatus: RoomConnectionStatus;
   setRoomStatus: (roomStatus: RoomConnectionStatus) => void;
   
-  typingPeers: Set<string>;
-  setTyping: (peerId: string, isTyping: boolean) => void;
+  typingPeers: Map<string, { handle: string; channelId: string; lastTypedAt: number }>;
+  setTyping: (peerId: string, handleOrIsTyping: string | boolean, channelId?: string) => void;
+  clearTyping: (peerId: string) => void;
   
+  peerGraceTimers: Map<string, ReturnType<typeof setTimeout>>;
+  startPeerGraceTimer: (peerId: string) => void;
+  cancelPeerGraceTimer: (peerId: string) => void;
+
   signalingDriverName: 'Primary' | 'Backup (Ably)' | 'None';
   setSignalingDriverName: (name: 'Primary' | 'Backup (Ably)' | 'None') => void;
 
@@ -151,13 +156,48 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     next.delete(peerId);
     
     // Also remove from typing list if present
-    const nextTyping = new Set(state.typingPeers);
+    const nextTyping = new Map(state.typingPeers);
     nextTyping.delete(peerId);
     
     return { peers: next, typingPeers: nextTyping };
   }),
   getPeerCount: () => {
     return get().peers.size;
+  },
+
+  peerGraceTimers: new Map(),
+  startPeerGraceTimer: (peerId) => {
+    const state = get();
+    const existingTimer = state.peerGraceTimers.get(peerId);
+    if (existingTimer) clearTimeout(existingTimer);
+
+    // Update peer status to 'grace'
+    state.updatePeer(peerId, { connectionState: 'grace' });
+
+    const timer = setTimeout(() => {
+      get().removePeer(peerId);
+      const nextTimers = new Map(get().peerGraceTimers);
+      nextTimers.delete(peerId);
+      set({ peerGraceTimers: nextTimers });
+    }, 5000);
+
+    const nextTimers = new Map(state.peerGraceTimers);
+    nextTimers.set(peerId, timer);
+    set({ peerGraceTimers: nextTimers });
+  },
+  cancelPeerGraceTimer: (peerId) => {
+    const state = get();
+    const timer = state.peerGraceTimers.get(peerId);
+    if (timer) {
+      clearTimeout(timer);
+      const nextTimers = new Map(state.peerGraceTimers);
+      nextTimers.delete(peerId);
+      set({ peerGraceTimers: nextTimers });
+    }
+    const peer = state.peers.get(peerId);
+    if (peer && peer.connectionState === 'grace') {
+      state.updatePeer(peerId, { connectionState: 'connected' });
+    }
   },
   
   messages: [],
@@ -207,31 +247,46 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   roomStatus: 'idle',
   setRoomStatus: (roomStatus) => set({ roomStatus }),
   
-  typingPeers: new Set(),
-  setTyping: (peerId, isTyping) => set((state) => {
-    const next = new Set(state.typingPeers);
-    if (isTyping) {
-      next.add(peerId);
+  typingPeers: new Map(),
+  setTyping: (peerId, handleOrIsTyping, channelId) => set((state) => {
+    const next = new Map(state.typingPeers);
+    if (typeof handleOrIsTyping === 'boolean') {
+      if (!handleOrIsTyping) {
+        next.delete(peerId);
+      } else {
+        const peer = state.peers.get(peerId);
+        const handle = peer?.handle || peer?.displayName || 'Peer';
+        next.set(peerId, { handle, channelId: channelId || state.activeChannelId || '', lastTypedAt: Date.now() });
+      }
     } else {
-      next.delete(peerId);
+      next.set(peerId, { handle: handleOrIsTyping, channelId: channelId || state.activeChannelId || '', lastTypedAt: Date.now() });
     }
+    return { typingPeers: next };
+  }),
+  clearTyping: (peerId) => set((state) => {
+    const next = new Map(state.typingPeers);
+    next.delete(peerId);
     return { typingPeers: next };
   }),
   
   signalingDriverName: 'None',
   setSignalingDriverName: (signalingDriverName) => set({ signalingDriverName }),
 
-  reset: () => set({
-    room: null,
-    channels: [],
-    activeChannelId: null,
-    replyingTo: null,
-    myPeerId: null,
-    peers: new Map(),
-    messages: [],
-    roomStatus: 'idle',
-    typingPeers: new Set(),
-    signalingDriverName: 'None',
-    outboxPendingIds: new Set(),
-  }),
+  reset: () => {
+    get().peerGraceTimers.forEach((timer) => clearTimeout(timer));
+    set({
+      room: null,
+      channels: [],
+      activeChannelId: null,
+      replyingTo: null,
+      myPeerId: null,
+      peers: new Map(),
+      messages: [],
+      roomStatus: 'idle',
+      typingPeers: new Map(),
+      peerGraceTimers: new Map(),
+      signalingDriverName: 'None',
+      outboxPendingIds: new Set(),
+    });
+  },
 }));

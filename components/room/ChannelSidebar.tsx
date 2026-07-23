@@ -5,10 +5,14 @@ import { Plus, X, Check } from 'lucide-react';
 import { useChatStore } from '../../store/chatStore';
 import { Channel } from '../../types';
 import { generateId } from '../../lib/utils';
-import { createChannel, deleteChannel, getChannelsByRoom } from '../../lib/storage';
+import { createChannel, deleteChannel, getChannelsByRoom, setLastChannel } from '../../lib/storage';
 import { broadcastChannelCreate, broadcastChannelDelete } from '../../lib/webrtc';
 
-export const ChannelSidebar: React.FC = () => {
+interface ChannelSidebarProps {
+  onChannelSelect?: () => void;
+}
+
+export const ChannelSidebar: React.FC<ChannelSidebarProps> = ({ onChannelSelect }) => {
   const {
     channels,
     activeChannelId,
@@ -21,6 +25,7 @@ export const ChannelSidebar: React.FC = () => {
 
   const [isAdding, setIsAdding] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const isHost = room?.isHost ?? false;
 
@@ -28,6 +33,14 @@ export const ChannelSidebar: React.FC = () => {
   const uniqueChannels = channels.filter(
     (c, i, arr) => arr.findIndex((x) => x.id === c.id) === i
   );
+
+  const handleSelectChannel = (id: string) => {
+    setActiveChannel(id);
+    if (room?.roomId) {
+      setLastChannel(room.roomId, id);
+    }
+    onChannelSelect?.();
+  };
 
   // On mount, auto-create #general if empty in Dexie
   useEffect(() => {
@@ -46,22 +59,35 @@ export const ChannelSidebar: React.FC = () => {
           };
           addChannel(generalChannel);
           await createChannel(generalChannel);
-          setActiveChannel(generalChannel.id);
+          handleSelectChannel(generalChannel.id);
           if (isHost) {
             broadcastChannelCreate(generalChannel);
           }
         } else {
           existing.forEach((ch: Channel) => addChannel(ch));
-          setActiveChannel(existing[0].id);
+          handleSelectChannel(existing[0].id);
         }
       })();
     }
     return () => { active = false; };
-  }, [uniqueChannels.length, room?.roomId, isHost, myPeerId, addChannel, setActiveChannel]);
+  }, [uniqueChannels.length, room?.roomId, isHost, myPeerId, addChannel]);
 
   const handleCreateChannel = () => {
-    const cleanName = newChannelName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '');
-    if (!cleanName || !room?.roomId) return;
+    const rawTrimmed = newChannelName.trim();
+    if (!rawTrimmed) {
+      setErrorMsg("Channel name can't be empty");
+      return;
+    }
+    const cleanName = rawTrimmed.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9\-]/g, '').slice(0, 32);
+    if (!cleanName) {
+      setErrorMsg("Channel name can't be empty");
+      return;
+    }
+    if (uniqueChannels.some((c) => c.name === cleanName)) {
+      setErrorMsg('A channel with this name already exists');
+      return;
+    }
+    if (!room?.roomId) return;
 
     const newChannel: Channel = {
       id: generateId(),
@@ -74,9 +100,10 @@ export const ChannelSidebar: React.FC = () => {
     addChannel(newChannel);
     createChannel(newChannel);
     broadcastChannelCreate(newChannel);
-    setActiveChannel(newChannel.id);
+    handleSelectChannel(newChannel.id);
 
     setNewChannelName('');
+    setErrorMsg(null);
     setIsAdding(false);
   };
 
@@ -90,10 +117,10 @@ export const ChannelSidebar: React.FC = () => {
   };
 
   return (
-    <aside className="w-[240px] flex-shrink-0 bg-surface border-r border-border h-full flex flex-col font-sans select-none overflow-y-auto">
+    <aside className="w-full md:w-[240px] flex-shrink-0 bg-surface border-r border-border h-full flex flex-col font-sans select-none overflow-y-auto">
       {/* Section Header */}
-      <div className="px-3 pt-4 pb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-text-muted">
-        CHANNELS
+      <div className="px-3 pt-4 pb-2 text-[11px] font-medium uppercase tracking-[0.08em] text-text-muted flex items-center justify-between">
+        <span>CHANNELS</span>
       </div>
 
       {/* Channel List Items */}
@@ -104,7 +131,7 @@ export const ChannelSidebar: React.FC = () => {
           return (
             <div
               key={ch.id}
-              onClick={() => setActiveChannel(ch.id)}
+              onClick={() => handleSelectChannel(ch.id)}
               className={`group relative flex items-center h-8 px-2 mx-1 rounded text-sm cursor-pointer transition-colors ${
                 isActive
                   ? 'bg-elevated text-text-primary font-medium border-l-2 border-accent'
@@ -131,34 +158,49 @@ export const ChannelSidebar: React.FC = () => {
         {/* Add Channel Button / Inline Input */}
         <div className="pt-2 px-1">
           {isAdding ? (
-            <div className="flex items-center gap-1 bg-elevated border border-border focus-within:border-accent rounded px-2 py-1">
-              <span className="text-text-muted text-xs">#</span>
-              <input
-                type="text"
-                autoFocus
-                value={newChannelName}
-                onChange={(e) => setNewChannelName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleCreateChannel();
-                  if (e.key === 'Escape') setIsAdding(false);
-                }}
-                placeholder="channel-name"
-                className="w-full bg-transparent text-text-primary text-[13px] font-sans outline-none placeholder:text-text-muted"
-              />
-              <button
-                type="button"
-                onClick={handleCreateChannel}
-                className="text-text-muted hover:text-text-primary p-0.5 focus:outline-none"
-              >
-                <Check className="w-3.5 h-3.5 text-accent" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsAdding(false)}
-                className="text-text-muted hover:text-text-primary p-0.5 focus:outline-none"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1 bg-elevated border border-border focus-within:border-accent rounded px-2 py-1">
+                <span className="text-text-muted text-xs">#</span>
+                <input
+                  type="text"
+                  autoFocus
+                  maxLength={32}
+                  value={newChannelName}
+                  onChange={(e) => {
+                    setNewChannelName(e.target.value);
+                    if (errorMsg) setErrorMsg(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateChannel();
+                    if (e.key === 'Escape') {
+                      setIsAdding(false);
+                      setErrorMsg(null);
+                    }
+                  }}
+                  placeholder="channel-name"
+                  className="w-full bg-transparent text-text-primary text-[13px] font-sans outline-none placeholder:text-text-muted"
+                />
+                <button
+                  type="button"
+                  onClick={handleCreateChannel}
+                  className="text-text-muted hover:text-text-primary p-0.5 focus:outline-none"
+                >
+                  <Check className="w-3.5 h-3.5 text-accent" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAdding(false);
+                    setErrorMsg(null);
+                  }}
+                  className="text-text-muted hover:text-text-primary p-0.5 focus:outline-none"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {errorMsg && (
+                <span className="text-[11px] text-accent px-1 font-sans">{errorMsg}</span>
+              )}
             </div>
           ) : (
             <button

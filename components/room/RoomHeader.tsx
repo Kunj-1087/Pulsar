@@ -2,10 +2,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Copy, Check, QrCode, Share2, Users, MoreVertical, Menu, WifiOff, QrCode as QrIcon } from 'lucide-react';
+import { Copy, Check, QrCode, Share2, Users, MoreVertical, Menu, LogOut, QrCode as QrIcon } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useChatStore } from '../../store/chatStore';
 import { useNetworkStatus } from '../../lib/useNetworkStatus';
 import { fetchLanIP, buildInviteUrl, isJoiner } from '../../lib/lanDiscovery';
+import { broadcastLeave } from '../../lib/webrtc';
+import { sendLeaveSignal } from '../../lib/signaling';
 
 interface RoomHeaderProps {
   roomId: string;
@@ -20,6 +23,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   onToggleMembersList,
   onOpenManualPairing,
 }) => {
+  const router = useRouter();
   const { peers, channels, activeChannelId } = useChatStore();
   const isOnline = useNetworkStatus();
 
@@ -28,6 +32,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
   const [showQRModal, setShowQRModal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [identity, setIdentity] = useState<{ handle: string; peerColor: string } | null>(null);
   const [inviteUrl, setInviteUrl] = useState<string>('');
 
@@ -64,6 +69,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
+        setShowLeaveConfirm(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -228,7 +234,7 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
             </button>
 
             {showDropdown && (
-              <div className="absolute right-0 top-full mt-1 w-44 bg-overlay border border-border rounded shadow-lg py-1 z-50 text-xs font-sans">
+              <div className="absolute right-0 top-full mt-1 w-48 bg-overlay border border-border rounded shadow-lg py-1 z-50 text-xs font-sans">
                 <button
                   type="button"
                   onClick={handleShareLink}
@@ -258,10 +264,47 @@ export const RoomHeader: React.FC<RoomHeaderProps> = ({
                     setShowDropdown(false);
                     setShowResetConfirm(true);
                   }}
-                  className="w-full text-left px-3 py-1.5 text-accent hover:bg-elevated"
+                  className="w-full text-left px-3 py-1.5 text-text-secondary hover:bg-elevated"
                 >
                   Reset Identity
                 </button>
+
+                <div className="my-1 border-t border-border" />
+
+                {showLeaveConfirm ? (
+                  <div className="px-3 py-1.5 flex items-center justify-between bg-elevated">
+                    <span className="text-text-primary font-medium text-[12px]">Sure?</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          broadcastLeave();
+                          sendLeaveSignal();
+                          router.push('/');
+                        }}
+                        className="text-accent font-semibold text-[12px] hover:underline"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowLeaveConfirm(false)}
+                        className="text-text-muted text-[12px] hover:text-text-primary"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowLeaveConfirm(true)}
+                    className="w-full text-left px-3 py-1.5 text-accent hover:bg-elevated flex items-center justify-between text-[13px]"
+                  >
+                    <span>Leave Room</span>
+                    <LogOut className="w-3.5 h-3.5 text-accent" />
+                  </button>
+                )}
               </div>
             )}
           </div>

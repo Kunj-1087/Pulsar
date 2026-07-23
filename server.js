@@ -308,7 +308,7 @@ wss.on('connection', (ws, req) => {
       }
 
       // Check allowed type strings
-      const allowedTypes = ['join-room', 'offer', 'answer', 'ice-candidate'];
+      const allowedTypes = ['join-room', 'offer', 'answer', 'ice-candidate', 'leave', 'peer-rejoin'];
       if (!allowedTypes.includes(type)) {
         logEvent('UNKNOWN_TYPE', clientIp, `Dropping type: ${type}`);
         return;
@@ -350,11 +350,57 @@ wss.on('connection', (ws, req) => {
       }
 
       // 7. Route messages
+      if (type === 'leave') {
+        if (currentRoom && rooms.has(currentRoom)) {
+          const room = rooms.get(currentRoom);
+          room.delete(ws);
+          room.forEach((peer) => {
+            if (peer !== ws && peer.readyState === 1) {
+              peer.send(JSON.stringify({
+                type: 'peer-left',
+                peerId: peerId || ws._peerId,
+              }));
+            }
+          });
+          if (room.size === 0) {
+            rooms.delete(currentRoom);
+            logEvent('ROOM_CLEANUP', clientIp, `Room: ${currentRoom}`);
+          }
+        }
+        ws._roomId = null;
+        return;
+      }
+
+      if (type === 'peer-rejoin') {
+        if (currentRoom && rooms.has(currentRoom)) {
+          const room = rooms.get(currentRoom);
+          room.forEach((peer) => {
+            if (peer !== ws && peer.readyState === 1) {
+              peer.send(JSON.stringify({
+                type: 'peer-joined',
+                peerId: peerId || ws._peerId,
+              }));
+            }
+          });
+        }
+        return;
+      }
+
       if (type === 'join-room') {
         // Room join rate limit check
         if (ipJoinLimiter.isRateLimited(clientIp)) {
           logEvent('ROOM_JOIN_RATE_LIMITED', clientIp);
           ws.close(4029, 'rate-limited');
+          return;
+        }
+
+        // Check if room exists for non-host joiner
+        if (!msg.isHost && (!rooms.has(roomId) || rooms.get(roomId).size === 0)) {
+          logEvent('ROOM_NOT_FOUND', clientIp, `Room: ${roomId}`);
+          ws.send(JSON.stringify({
+            type: 'room-not-found',
+            roomId,
+          }));
           return;
         }
 

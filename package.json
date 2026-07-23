@@ -42,6 +42,8 @@
   "dependencies": {
     "@ducanh2912/next-pwa": "^10.2.9",
     "@tanstack/react-virtual": "^3.14.6",
+    "@types/react-virtualized-auto-sizer": "^1.0.4",
+    "@types/react-window": "^1.8.8",
     "ably": "^2.24.0",
     "clsx": "^2.1.1",
     "dexie": "^4.4.4",
@@ -52,6 +54,8 @@
     "qrcode.react": "^4.2.0",
     "react": "^18",
     "react-dom": "^18",
+    "react-virtualized-auto-sizer": "^2.0.3",
+    "react-window": "^2.3.0",
     "tailwind-merge": "^3.6.0",
     "ws": "^8.21.0",
     "zustand": "^5.0.14"
