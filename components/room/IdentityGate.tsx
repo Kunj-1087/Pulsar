@@ -1,34 +1,63 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Loader2 } from 'lucide-react';
 import { cn, migrateLegacyStorage, cleanupLegacyDatabase } from '../../lib/utils';
 
-interface IdentityGateProps {
-  children: React.ReactNode;
+export interface IdentityGateProps {
+  children?: React.ReactNode;
+  onComplete?: () => void;
 }
 
-interface Identity {
+export interface Identity {
   handle: string;
-  peerColor: string;
-  createdAt: number;
+  color: string;
+  peerColor?: string;
+  peerId: string;
+  createdAt?: number;
 }
 
-export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
+const PEER_COLORS = [
+  '#E50914',  // red (accent — Netflix red)
+  '#E8A838',  // amber
+  '#4FC3F7',  // sky blue
+  '#81C784',  // sage green
+  '#CE93D8',  // lavender
+  '#FF8A65',  // coral
+  '#4DD0E1',  // teal
+  '#F06292',  // pink
+];
+
+const COLOR_NAMES = [
+  'red',
+  'amber',
+  'sky blue',
+  'sage green',
+  'lavender',
+  'coral',
+  'teal',
+  'pink',
+];
+
+type GatePhase = 'intro' | 'form' | 'submitting' | 'complete';
+
+export const IdentityGate: React.FC<IdentityGateProps> = ({ children, onComplete }) => {
   const [identity, setIdentity] = useState<Identity | null>(null);
   const [checking, setChecking] = useState(true);
+  const [phase, setPhase] = useState<GatePhase>('intro');
+  const [introVisible, setIntroVisible] = useState(false);
 
   // Form states
   const [handle, setHandle] = useState('');
+  const [selectedColor, setSelectedColor] = useState<string>(() => {
+    return PEER_COLORS[Math.floor(Math.random() * PEER_COLORS.length)];
+  });
   const [isFocused, setIsFocused] = useState(false);
   const [borderFlashRed, setBorderFlashRed] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [isInitializing, setIsInitializing] = useState(false);
 
-  // Transition & boot sequence states
-  const [typedText, setTypedText] = useState('');
-  const [showCursor, setShowCursor] = useState(false);
-  const [elementsVisible, setElementsVisible] = useState(false);
-  const [fadeState, setFadeState] = useState<'idle' | 'fade-out' | 'blackout' | 'fade-in'>('idle');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const flashTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Run legacy migration and cleanup on first load
   useEffect(() => {
@@ -43,8 +72,9 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (parsed && typeof parsed.handle === 'string' && parsed.handle.length >= 3) {
+          if (parsed && typeof parsed.handle === 'string' && parsed.handle.length >= 1) {
             setIdentity(parsed);
+            setPhase('complete');
           }
         } catch (e) {
           console.error('Invalid identity in localStorage', e);
@@ -54,287 +84,270 @@ export const IdentityGate: React.FC<IdentityGateProps> = ({ children }) => {
     }
   }, []);
 
-  // Animated character-by-character typing boot sequence
+  // Timeline: intro (0–1.2s) -> form phase
   useEffect(() => {
     if (checking || identity) return;
 
-    const bootLines = [
-      '> quark v1.0.0',
-      '> initializing peer node',
-      '> no accounts. no servers. no trace.',
-      '> ',
-    ];
-    let currentLine = 0;
-    let charIdx = 0;
-    let activeInterval: NodeJS.Timeout | null = null;
-    let cursorTimer: NodeJS.Timeout | null = null;
-    let elementsTimer: NodeJS.Timeout | null = null;
-    
-    const typeLine = () => {
-      if (currentLine >= bootLines.length) {
-        setShowCursor(true);
-        cursorTimer = setTimeout(() => {
-          setShowCursor(false);
-          elementsTimer = setTimeout(() => {
-            setElementsVisible(true);
-          }, 600);
-        }, 800);
-        return;
-      }
-      
-      const line = bootLines[currentLine];
-      activeInterval = setInterval(() => {
-        charIdx++;
-        const prefix = bootLines.slice(0, currentLine).join('\n');
-        const currentText = prefix + (prefix ? '\n' : '') + line.substring(0, charIdx);
-        setTypedText(currentText);
-        
-        if (charIdx >= line.length) {
-          if (activeInterval) clearInterval(activeInterval);
-          charIdx = 0;
-          currentLine++;
-          setTimeout(typeLine, 120);
-        }
-      }, 12);
-    };
-    
-    typeLine();
+    // Trigger intro fade-in transition
+    const frameId = requestAnimationFrame(() => {
+      setIntroVisible(true);
+    });
+
+    // After 1200ms (400ms fade-in + 800ms hold), move to form state
+    const introTimer = setTimeout(() => {
+      setPhase('form');
+    }, 1200);
 
     return () => {
-      if (activeInterval) clearInterval(activeInterval);
-      if (cursorTimer) clearTimeout(cursorTimer);
-      if (elementsTimer) clearTimeout(elementsTimer);
+      cancelAnimationFrame(frameId);
+      clearTimeout(introTimer);
     };
   }, [checking, identity]);
 
+  // Focus input when form phase activates
+  useEffect(() => {
+    if (phase === 'form') {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [phase]);
+
+  // Handle input change & strict validation
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    
-    // Strict handle validation: letters, numbers, underscores, hyphens, dots. No spaces.
+
+    // Max length: 20 chars
+    if (val.length > 20) return;
+
+    // Allowed: a-z A-Z 0-9 _ - . (Spaces and other chars silently rejected)
     const regex = /^[a-zA-Z0-9_\-\.]*$/;
-    
+
     if (!regex.test(val)) {
       setBorderFlashRed(true);
-      setTimeout(() => setBorderFlashRed(false), 200);
-      return;
-    }
-    
-    if (val.length > 20) {
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      flashTimeoutRef.current = setTimeout(() => {
+        setBorderFlashRed(false);
+      }, 300);
       return;
     }
 
     setHandle(val);
-    
-    if (errorMsg && val.length >= 3) {
+
+    if (errorMsg && val.length >= 1) {
       setErrorMsg(null);
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isInitializing) return;
+  const handleSubmit = () => {
+    if (phase === 'submitting' || phase === 'complete') return;
 
-    if (handle.length < 3) {
-      setErrorMsg('> use 3-20 characters: letters, numbers, -, _, .');
+    const trimmed = handle.trim();
+    if (trimmed.length < 1) {
+      setErrorMsg('Handle must be at least 1 character');
+      setBorderFlashRed(true);
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      flashTimeoutRef.current = setTimeout(() => {
+        setBorderFlashRed(false);
+      }, 300);
       return;
     }
 
-    setIsInitializing(true);
+    setPhase('submitting');
 
     setTimeout(() => {
-      const colors = [
-        '#E50914', // Netflix Red
-        '#5b8dee', // blue
-        '#5cb85c', // green
-        '#f0ad4e', // amber
-        '#9b59b6', // purple
-        '#1abc9c', // teal
-        '#e67e22', // orange
-        '#3498db'  // sky
-      ];
-      const randomColor = colors[Math.floor(Math.random() * colors.length)];
-      
+      // Get existing peerId or generate new one once on first visit
+      let peerId = '';
+      const saved = localStorage.getItem('quark_identity');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed.peerId === 'string' && parsed.peerId) {
+            peerId = parsed.peerId;
+          }
+        } catch {}
+      }
+
+      if (!peerId) {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+          peerId = crypto.randomUUID();
+        } else {
+          peerId = 'peer_' + Math.random().toString(36).substring(2, 11);
+        }
+      }
+
       const newIdentity: Identity = {
-        handle,
-        peerColor: randomColor,
+        handle: trimmed,
+        color: selectedColor,
+        peerColor: selectedColor,
+        peerId,
         createdAt: Date.now(),
       };
-      
-      localStorage.setItem('quark_identity', JSON.stringify(newIdentity));
-      localStorage.setItem('quark-displayName', handle);
 
-      setFadeState('fade-out');
+      // Write identity to localStorage
+      localStorage.setItem('quark_identity', JSON.stringify(newIdentity));
+      localStorage.setItem('quark-displayName', trimmed);
+
+      // Animate form out over 300ms
+      setPhase('complete');
 
       setTimeout(() => {
-        setFadeState('blackout');
         setIdentity(newIdentity);
-        
-        setTimeout(() => {
-          setFadeState('fade-in');
-          
-          setTimeout(() => {
-            setFadeState('idle');
-          }, 300);
-        }, 50);
+        if (onComplete) {
+          onComplete();
+        }
       }, 300);
-    }, 600);
+    }, 250);
   };
 
   if (checking) {
-    return (
-      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center font-mono text-xs text-text-muted select-none">
-        <span>loading<span className="animate-pulse ml-0.5 text-accent">_</span></span>
-      </div>
-    );
+    return <div className="fixed inset-0 z-50 bg-black" />;
   }
 
-  const showIdentityScreen = !identity || fadeState === 'fade-out';
+  const showGate = !identity || phase !== 'complete';
   const showChildren = !!identity;
-
-  const isInputInvalid = handle.length > 0 && handle.length < 3;
-  const isButtonDisabled = handle.length === 0 || isInputInvalid || isInitializing;
+  const isButtonDisabled = handle.trim().length === 0 || phase === 'submitting';
 
   return (
-    <div className="relative w-full min-h-screen bg-black text-white font-sans">
-      {/* Identity creation screen */}
-      {showIdentityScreen && (
+    <>
+      {showChildren && children}
+
+      {showGate && (
         <div
+          role="dialog"
+          aria-label="Set up your identity"
           className={cn(
-            "fixed inset-0 z-40 bg-black flex flex-col items-center justify-center p-6 select-none",
-            fadeState === 'fade-out' ? "opacity-0 transition-opacity duration-300 ease-[cubic-bezier(0.4,0,1,1)]" : "opacity-100"
+            "fixed inset-0 z-50 bg-black flex flex-col items-center justify-center p-4 select-none transition-all duration-300 ease-out",
+            phase === 'complete' ? "opacity-0 -translate-y-2 pointer-events-none" : "opacity-100 translate-y-0"
           )}
         >
-          <div className="w-full max-w-[440px] flex flex-col items-center text-center font-sans">
-            {/* Top boot sequence animated lines */}
-            <div className="font-mono text-text-secondary whitespace-pre-wrap min-h-[6rem] text-sm text-center">
-              {typedText}
-              {showCursor && <span className="animate-pulse text-accent">█</span>}
-            </div>
+          <div className="w-full max-w-[360px] flex flex-col items-center text-center font-sans">
+            {/* "quark" wordmark — transition smoothly from 48px intro to 20px header */}
+            <h1
+              className={cn(
+                "font-bold text-white tracking-[-0.03em] transition-all duration-400 ease-out select-none",
+                phase === 'intro'
+                  ? cn(
+                      "text-[48px] mb-0",
+                      introVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-3"
+                    )
+                  : "text-[20px] mb-1.5 opacity-100 translate-y-0"
+              )}
+            >
+              quark
+            </h1>
 
-            {/* Fade-in elements */}
-            <div className="mt-6 flex flex-col gap-5 w-full">
-              {/* Handle prompt */}
-              <div
-                className={cn(
-                  "font-mono text-text-secondary text-sm transition-all duration-300 text-center",
-                  elementsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
-                )}
+            {/* Moment 2 — Identity Form */}
+            <div
+              className={cn(
+                "w-full flex flex-col items-center transition-all duration-400 ease-out",
+                phase === 'intro'
+                  ? "opacity-0 translate-y-4 pointer-events-none invisible"
+                  : "opacity-100 translate-y-0 visible"
+              )}
+            >
+              {/* Subtitle */}
+              <p className="text-[13px] text-text-muted mb-6">
+                Choose your identity
+              </p>
+
+              {/* Handle Input */}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSubmit();
+                }}
+                className="w-full flex flex-col items-start mb-6"
               >
-                {'>'} handle:
-              </div>
+                <div
+                  className={cn(
+                    "relative w-full rounded-[4px] bg-elevated border py-3 px-3.5 pl-[32px] transition-colors duration-150 flex items-center",
+                    borderFlashRed || errorMsg
+                      ? "border-accent"
+                      : isFocused
+                      ? "border-accent"
+                      : "border-border"
+                  )}
+                >
+                  {/* @ Prefix */}
+                  <span className="absolute left-[14px] text-[14px] text-text-muted select-none pointer-events-none">
+                    @
+                  </span>
 
-              {/* Input Field */}
-              <div
-                className={cn(
-                  "transition-all duration-300 w-full",
-                  elementsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={handle}
+                    onChange={handleInputChange}
+                    onFocus={() => setIsFocused(true)}
+                    onBlur={() => setIsFocused(false)}
+                    placeholder="yourhandle"
+                    disabled={phase === 'submitting' || phase === 'complete'}
+                    className="w-full bg-transparent text-[16px] text-white placeholder:text-text-muted outline-none border-none p-0 caret-accent select-text"
+                    autoFocus
+                  />
+                </div>
+
+                {/* Error message */}
+                {errorMsg && (
+                  <p className="text-[11px] text-accent mt-1.5 transition-opacity duration-200 text-left">
+                    {errorMsg}
+                  </p>
                 )}
-                style={{ transitionDelay: '120ms' }}
-              >
-                <form onSubmit={handleSubmit} className="w-full flex flex-col items-center">
-                  <div
-                    className={cn(
-                      "flex items-center w-full rounded bg-elevated border px-3 py-2.5 transition-colors relative",
-                      borderFlashRed
-                        ? "border-accent"
-                        : isFocused
-                        ? "border-accent"
-                        : "border-border"
-                    )}
-                  >
-                    <span className="font-mono text-accent text-sm mr-2 select-none">@</span>
-                    <input
-                      type="text"
-                      value={handle}
-                      onChange={handleInputChange}
-                      onFocus={() => setIsFocused(true)}
-                      onBlur={() => setIsFocused(false)}
-                      placeholder=""
-                      className="flex-1 bg-transparent text-base font-sans text-white placeholder:text-text-muted focus:outline-none caret-accent select-text"
-                      disabled={isInitializing}
-                      autoFocus
-                    />
+              </form>
 
-                    <span
-                      className={cn(
-                        "text-xs font-mono transition-colors select-none ml-2",
-                        handle.length >= 20
-                          ? "text-accent"
-                          : "text-text-muted"
-                      )}
-                    >
-                      {handle.length}/20
-                    </span>
-                  </div>
+              {/* Color Swatches */}
+              <div className="w-full flex flex-col items-center mb-6">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-text-muted mb-3 select-none">
+                  Pick a color
+                </span>
 
-                  {/* Inline error description */}
-                  <div className="h-5 mt-2 overflow-hidden relative">
-                    {errorMsg && (
-                      <p className="text-xs font-mono text-accent">
-                        {errorMsg}
-                      </p>
-                    )}
-                  </div>
-                </form>
+                <div className="flex items-center justify-center gap-[10px]">
+                  {PEER_COLORS.map((colorHex, idx) => {
+                    const isSelected = selectedColor === colorHex;
+                    return (
+                      <button
+                        key={colorHex}
+                        type="button"
+                        onClick={() => setSelectedColor(colorHex)}
+                        disabled={phase === 'submitting' || phase === 'complete'}
+                        aria-label={`Select color ${COLOR_NAMES[idx] || colorHex}`}
+                        className={cn(
+                          "w-6 h-6 rounded-full transition-all duration-150 ease-in-out cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-white",
+                          isSelected
+                            ? "border-2 border-white opacity-100 scale-110"
+                            : "border-0 opacity-70 hover:opacity-100 hover:scale-[1.05]"
+                        )}
+                        style={{ backgroundColor: colorHex }}
+                      />
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Submit Button */}
-              <div
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isButtonDisabled}
                 className={cn(
-                  "transition-all duration-300 w-full",
-                  elementsVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
+                  "w-full h-[44px] rounded-[4px] font-medium text-[14px] text-white flex items-center justify-center transition-colors duration-150 select-none outline-none focus-visible:ring-2 focus-visible:ring-white",
+                  isButtonDisabled
+                    ? "bg-overlay text-text-muted cursor-not-allowed"
+                    : "bg-accent hover:bg-accent-hover cursor-pointer"
                 )}
-                style={{ transitionDelay: '240ms' }}
               >
-                <button
-                  type="submit"
-                  onClick={handleSubmit}
-                  disabled={isButtonDisabled}
-                  className={cn(
-                    "w-full h-10 bg-accent hover:bg-accent-hover text-white font-medium text-sm rounded flex items-center justify-center gap-2 transition-colors select-none cursor-pointer",
-                    isButtonDisabled && "opacity-40 cursor-not-allowed"
-                  )}
-                >
-                  {isInitializing && (
-                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin shrink-0" />
-                  )}
-                  <span>{isInitializing ? "initializing..." : "continue →"}</span>
-                </button>
-              </div>
-
-              {/* Stored Locally Subline */}
-              <div
-                className={cn(
-                  "text-center mt-6 transition-all duration-300",
-                  elementsVisible ? "opacity-60 translate-y-0" : "opacity-0 translate-y-2"
+                {phase === 'submitting' ? (
+                  <Loader2 className="w-4 h-4 text-white animate-spin" />
+                ) : (
+                  "Enter Quark"
                 )}
-                style={{ transitionDelay: '360ms' }}
-              >
-                <p className="text-xs text-text-muted select-none">
-                  Stored locally. Never sent to any server.
-                </p>
-              </div>
+              </button>
             </div>
           </div>
         </div>
       )}
-
-      {/* Main layout content */}
-      {showChildren && (
-        <div
-          className={cn(
-            "w-full h-full flex flex-col transition-opacity duration-300",
-            (fadeState === 'idle' || fadeState === 'fade-in') ? "opacity-100" : "opacity-0"
-          )}
-        >
-          {children}
-        </div>
-      )}
-
-      {/* Transition cover */}
-      {fadeState === 'blackout' && (
-        <div className="fixed inset-0 z-50 bg-black" />
-      )}
-    </div>
+    </>
   );
 };
