@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
-import * as ReactWindow from 'react-window';
+// @ts-ignore
+import { VariableSizeList } from 'react-window';
 import { AutoSizer } from 'react-virtualized-auto-sizer';
 
 const AutoSizerComp: any = AutoSizer;
-const VariableSizeListComp: any = (ReactWindow as any).VariableSizeList || (ReactWindow as any).default?.VariableSizeList || ReactWindow;
+const VariableSizeListComp: any = VariableSizeList || require('react-window').VariableSizeList;
 import { Message } from '../../types';
 import { MessageBubble } from './MessageBubble';
 import { TypingIndicator } from './TypingIndicator';
